@@ -1,0 +1,27 @@
+id: zhu_dct
+name: Zhu DCT
+family: Classical (linear)
+version: "1.0"
+order: 1
+citation: >-
+  Zhu Q, Tian X, Wong C-W, Wu M. ECG reconstruction via PPG: a pilot study. IEEE EMBS BHI 2019
+  (arXiv:1904.10481).
+licence: method re-implemented in this repository; coefficients fitted by us on CapnoBase
+runtime: numpy
+native_fs: 128
+window_s: 10                    # works per heartbeat cycle inside 10-s windows
+overlap: 0.5
+stochastic: false
+params:
+  n_ppg: 12
+  n_ecg: 100
+  alpha: 500
+weights:
+  - file: zhu_capnobase.npz      # W (12 x 100), b (100), pat; 27,661 CapnoBase cycles
+    url: release://zhu_capnobase.npz
+    sha256: null                 # filled in when the Release asset is uploaded
+    fit: "python setup.py --zhu --capnobase PATH   (fits it locally from CapnoBase instead of downloading)"
+min_ram_gb: 0.1
+description: >-
+  Cuts the PPG into heartbeat cycles, keeps the first 12 DCT coefficients of each, and maps them to 100
+  ECG coefficients with one ridge-regression matrix (1,300 numbers) learned on CapnoBase.

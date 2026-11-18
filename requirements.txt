@@ -1,0 +1,8 @@
+# PPG2ECG Studio v0.1 (Python 3.11, Windows 10/11 64-bit)
+numpy>=1.26,<3
+scipy>=1.11
+pandas>=2.1
+PyYAML>=6.0
+PySide6>=6.6,<7
+pyqtgraph>=0.13.4
+pytest>=8          # tests (run_tests.bat)

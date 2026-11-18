@@ -1,0 +1,17 @@
+.venv/
+.tools/
+__pycache__/
+*.pyc
+.pytest_cache/
+weights/*
+!weights/.gitkeep
+*.part
+# never commit data
+*.mat
+*.npz
+*.npy
+*.csv
+!tests/data/*.csv
+dist/
+build/
+.mypy_cache/

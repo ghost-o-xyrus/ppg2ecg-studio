@@ -1,0 +1,22 @@
+# Copy this folder to models/<your_id>/ to add a model. Folders starting with "_" are ignored by the app.
+# Phase 1 loads any folder that has model.yaml + adapter.py; the automatic checks of
+# `python setup.py --add-model` (interface, speed, determinism, memory, paperwork) arrive in v0.4.
+id: my_model
+name: My model
+family: GAN                     # GAN | diffusion | flow | transformer | CNN | classical | ...
+version: "0.1"
+order: 50                       # position in the list (lower = higher up and run earlier)
+citation: "Author A, Author B. Title. Venue, year."
+licence: MIT
+runtime: numpy                  # numpy | onnx | torch
+native_fs: 128                  # Hz, 25-500
+window_s: 4                     # s, 1-30
+overlap: 0.5                    # 0 for stochastic models (outputs are concatenated, not averaged)
+stochastic: false
+params: {}
+weights:                        # files expected in weights/<id>/
+  - file: my_model.onnx
+    url: https://example.org/my_model.onnx
+    sha256: null
+min_ram_gb: 1
+description: One or two sentences shown in the model's tooltip.

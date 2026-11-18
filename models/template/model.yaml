@@ -1,0 +1,23 @@
+# Template baseline: the physiology-free reference every other method is compared with.
+id: template
+name: Template baseline
+family: Reference
+version: "1.0"
+order: 0
+always_installed: true          # listed and installed even when nothing else is
+citation: >-
+  PPG2ECG thesis, Track 1 (2026). One fixed synthetic PQRST beat per detected PPG pulse, placed one
+  pulse-arrival time earlier.
+licence: same as this repository
+runtime: numpy
+native_fs: 128
+window_s: 10
+overlap: 0.5
+stochastic: false
+params:
+  pat: 0.3828125                # pulse arrival time (s), median R -> PPG-peak delay fitted on CapnoBase (Track 1)
+weights: []                     # optional: weights/template/template.json from tools/fit_baselines.py overrides pat
+min_ram_gb: 0.1
+description: >-
+  Detects PPG pulses and places one fixed textbook heartbeat per pulse. It carries heart rate and rhythm
+  but no information about the person's ECG shape; a learned model has to beat it to show it learned more.
