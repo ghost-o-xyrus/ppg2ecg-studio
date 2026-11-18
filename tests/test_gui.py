@@ -48,6 +48,8 @@ def test_window_flow(app, synth, tmp_path, monkeypatch):
     w.open_file(str(f), "ppg")
     wait(app, lambda: w.aligned is not None and w.aligned[1] is not None)
     assert w.models_panel.run_all.isEnabled()
+    assert w.models_panel.length.toolTip() != "Drop a PPG file first"   # tooltips explain the control again
+    assert w.models_panel.start.toolTip() != "Drop a PPG file first"
     assert "ppg" in w.plots.rows and "ecg" in w.plots.rows and "template" in w.plots.rows
 
     w.run(w.models_panel.selected())
@@ -55,6 +57,10 @@ def test_window_flow(app, synth, tmp_path, monkeypatch):
     r = w.results["template"]
     assert r.vs_true is not None and r.vs_true["r_f1_dc"] > 0.9
     assert w.plots.b_metrics.isEnabled()
+    if len(w.results) > 1:                                               # Run all with several models opens it
+        assert w.drawer.isVisible()
+        w.toggle_metrics()
+        assert not w.drawer.isVisible()
     w.toggle_metrics()
     assert w.drawer.isVisible() and w.drawer.t_cmp.rowCount() == len(w.results)
     assert w.drawer.t_err.rowCount() == len(w.results) and w.drawer.err_stack.currentIndex() == 0
@@ -68,6 +74,11 @@ def test_window_flow(app, synth, tmp_path, monkeypatch):
 
     w.remove_input("ecg")
     assert w.aligned[1] is None and not w.results and "ecg" not in w.plots.rows
+    w.toasts.show("Inputs changed", "again")                            # the same notice is not stacked twice
+    assert sum(t.title == "Inputs changed" for t in w.toasts.toasts) == 1
+    gone = w.toasts.toasts[-1]
+    gone.close_now()
+    assert not gone.isVisible()                                         # closing hides it at once
     w.run(["template"])
     wait(app, lambda: not w.busy and "template" in w.results)
     w.update_drawer()

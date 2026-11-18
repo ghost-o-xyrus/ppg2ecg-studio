@@ -1,8 +1,8 @@
-# PPG2ECG Studio v0.1 (Python 3.11, Windows 10/11 64-bit)
-numpy>=1.26,<3
-scipy>=1.11
-pandas>=2.1
-PyYAML>=6.0
-PySide6>=6.6,<7
-pyqtgraph>=0.13.4
-pytest>=8          # tests (run_tests.bat)
+# PPG2ECG Studio v0.1 (Python 3.11, Windows 10/11 64-bit); versions as tested
+numpy==2.4.6
+scipy==1.17.1
+pandas==3.1.1
+PyYAML==6.0.3
+PySide6-Essentials==6.12.0   # Qt widgets only (no web engine)
+pyqtgraph==0.14.0
+pytest==9.2.0                # tests (run_tests.bat)

@@ -47,6 +47,7 @@ class InputPanel(QFrame):
         title.setObjectName("panelTitle")
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.tabs.tabBar().setDrawBase(False)
         self.ppg = InputTab("ppg")
         self.ecg = InputTab("ecg")
         self.tabs.addTab(self.ppg, "PPG signal")

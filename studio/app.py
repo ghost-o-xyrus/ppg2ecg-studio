@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import traceback
 
 
@@ -15,6 +16,16 @@ def _fatal(text):
             ctypes.windll.user32.MessageBoxW(0, text, "PPG2ECG Studio", 0x10)
         except Exception:
             pass
+
+
+def _warm_up():
+    """Load the signal-processing code while the user looks at the window, so the first file opens quickly."""
+    try:
+        import bench.metrics  # noqa: F401
+        import bench.runner  # noqa: F401
+        from .intake import pipeline  # noqa: F401
+    except Exception:
+        traceback.print_exc()
 
 
 def main(argv=None):
@@ -56,6 +67,7 @@ def main(argv=None):
 
     w = MainWindow(config.Settings())
     w.show()
+    threading.Thread(target=_warm_up, daemon=True).start()
     for a in (argv or sys.argv)[1:]:        # files given on the command line / dropped on the shortcut
         if os.path.isfile(a):
             w.open_file(a, "ppg")

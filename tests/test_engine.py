@@ -1,4 +1,6 @@
 """Engine end to end on synthetic data: registry, both built-in models, scoring, PPG-only measures."""
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -64,3 +66,19 @@ def test_ppg_only_measures_and_flags():
 def test_display_shift():
     assert scoring.display_shift({"r_offset_ms": 250.0}) == 32
     assert scoring.display_shift({}) == 0
+
+
+def test_models_load_in_parallel():
+    """The window loads every model on its own thread at once; their imports must not deadlock."""
+    import subprocess
+    import sys
+    code = ("import sys; sys.path.insert(0, '.'); from concurrent.futures import ThreadPoolExecutor\n"
+            "from studio import engine\n"
+            "specs = [s for s in engine.discover() if s.installed] * 4\n"
+            "with ThreadPoolExecutor(len(specs)) as ex:\n"
+            "    lms = list(ex.map(engine.load_model, specs))\n"
+            "bad = [(m.spec.id, m.error) for m in lms if m.status != engine.READY]\n"
+            "print(bad); sys.exit(1 if bad else 0)\n")
+    for _ in range(3):        # a fresh interpreter each time: nothing imported yet, as when the app starts
+        r = subprocess.run([sys.executable, "-c", code], cwd=str(Path(__file__).resolve().parents[1]), capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stdout + r.stderr

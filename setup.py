@@ -98,6 +98,13 @@ def ensure_h5py():
     return False
 
 
+def _capnobase_needs_h5py(root):
+    """True when some subject exists only as a .mat file (the CSV/TAB copies are read first)."""
+    root = Path(root)
+    tables = {f.name.split("_")[0] for pat in ("*_8min_signal.csv", "*_8min_signal.tab") for f in root.rglob(pat)}
+    return any(f.name.split("_")[0] not in tables for f in root.rglob("*_8min.mat"))
+
+
 def install(spec, offline=None, capnobase=None):
     """-> True when the model's weights are in place."""
     if spec.always_installed or not spec.weights:
@@ -105,7 +112,7 @@ def install(spec, offline=None, capnobase=None):
         return True
     spec.weights_dir.mkdir(parents=True, exist_ok=True)
     if spec.id == "zhu_dct" and capnobase:
-        if ensure_h5py() or not any(Path(capnobase).rglob("*.mat")):
+        if not _capnobase_needs_h5py(capnobase) or ensure_h5py():
             from tools import fit_baselines
             say(f"  {spec.name}: fitting on CapnoBase in {capnobase} (about a minute) ...")
             try:

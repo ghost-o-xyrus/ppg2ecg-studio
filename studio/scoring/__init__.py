@@ -8,9 +8,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from bench import dsp
-from bench.metrics import estimate_offset, evaluate, match_peaks
-
 from .. import config
 
 
@@ -76,6 +73,7 @@ def _nanmean(rows, k):
 def score_vs_true(pred, true, fs=config.WORK_FS):
     """Track 1 scoring of one reconstruction: subject value = mean over 10-s windows, plus the record-level
     values (R-peak detection totals, delay, RMSSD). -> (summary dict, window rows, record dict)."""
+    from bench.metrics import evaluate
     rows, rec = evaluate(pred, true, fs, window_s=config.EVAL_WINDOW_S, fd_max_windows=config.FD_MAX_WINDOWS)
     out = {k: _nanmean(rows, k) for k in ("hr_ae", "hr_true", "hr_pred", "pearson", "pearson_lag", "pearson_lag_pc",
                                           "beat_pearson", "beat_pearson_pc", "rmse", "rmse_lag", "prd", "fd",
@@ -101,12 +99,14 @@ def _hr(peaks, fs):
 
 
 def recon_rpeaks(pred, fs=config.WORK_FS):
+    from bench import dsp
     y = dsp.bandpass(np.asarray(pred, float), fs, 0.5, 40.0, order=2)
     return dsp.detect_rpeaks(y, fs) if np.ptp(y) > 1e-9 else np.array([], int)
 
 
 def score_vs_ppg(pred, ppg_peaks, fs=config.WORK_FS):
     """Measures that need no true ECG: the reconstruction against the PPG pulses it was made from."""
+    from bench.metrics import estimate_offset, match_peaks
     rp = recon_rpeaks(pred, fs)
     pk = np.asarray(ppg_peaks, int)
     out = dict(hr_recon=_hr(rp, fs), hr_ppg=_hr(pk, fs), beats=int(len(rp)), pulses=int(len(pk)),

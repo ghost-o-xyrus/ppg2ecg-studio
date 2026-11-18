@@ -9,8 +9,6 @@ from PySide6.QtCore import QPointF, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QLabel, QMainWindow, QSplitter, QVBoxLayout, QWidget
 
-from bench import dsp
-
 from .. import config, engine, intake
 from ..engine import device as devmod
 from ..intake import IntakeError, NeedColumn, NeedRate, TooLong
@@ -312,6 +310,7 @@ class MainWindow(QMainWindow):
 
     def inputs_changed(self):
         had = bool(self.results)
+        self.s_hover.setText("")
         self.entry += 1
         self.results = {}
         self.aligned = None
@@ -326,6 +325,7 @@ class MainWindow(QMainWindow):
             self.notify(notes)
             rp = np.array([], int)
             if e is not None:
+                from bench import dsp
                 rp = dsp.detect_rpeaks(dsp.bandpass(e, config.WORK_FS, 0.5, 40.0, order=2), config.WORK_FS)
             self.aligned = (p, e, intake.aligned_peaks(self.ppg, p), rp)
         for r in self.models_panel.rows.values():

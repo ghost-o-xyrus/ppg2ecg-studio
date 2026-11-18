@@ -1,4 +1,7 @@
 """Colours and the Qt style sheet (one light theme; Fusion style so it looks the same on every Windows)."""
+from pathlib import Path
+
+ICONS = (Path(__file__).resolve().parent / "icons").as_posix()
 
 INK = "#111111"          # true ECG, main text
 BLUE = "#2f6fd1"         # template baseline, accent
@@ -22,7 +25,7 @@ QLabel#panelTitle {{ font-size: 11pt; font-weight: 600; }}
 QLabel#muted, QLabel[muted="true"] {{ color: {MUTED}; }}
 QLabel#small {{ color: {MUTED}; font-size: 9pt; }}
 
-QTabWidget::pane {{ border: none; }}
+QTabWidget::pane {{ border: none; border-top: 1px solid {LINE}; }}
 QTabBar::tab {{ background: transparent; padding: 7px 14px; margin-right: 2px; border: none;
                border-bottom: 2px solid transparent; color: {MUTED}; }}
 QTabBar::tab:selected {{ color: {INK}; border-bottom: 2px solid {BLUE}; font-weight: 600; }}
@@ -47,6 +50,16 @@ QToolButton#close {{ color: {MUTED}; font-size: 11pt; }}
 QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {{ background: white; border: 1px solid #cfd4dc; border-radius: 6px;
                                                   padding: 3px 6px; }}
 QSpinBox:disabled, QDoubleSpinBox:disabled {{ color: #a0a6b0; }}
+QAbstractSpinBox {{ padding-right: 20px; }}
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{ subcontrol-origin: border; width: 18px;
+                                                              border: none; background: transparent; }}
+QAbstractSpinBox::up-button {{ subcontrol-position: top right; }}
+QAbstractSpinBox::down-button {{ subcontrol-position: bottom right; }}
+QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{ background: #eef2f8; }}
+QAbstractSpinBox::up-arrow {{ image: url({ICONS}/up.svg); width: 10px; height: 6px; }}
+QAbstractSpinBox::down-arrow {{ image: url({ICONS}/down.svg); width: 10px; height: 6px; }}
+QAbstractSpinBox::up-arrow:disabled, QAbstractSpinBox::down-arrow:disabled {{ image: none; }}
+QScrollArea#modelList, QWidget#modelListBody {{ background: transparent; }}
 QCheckBox::indicator {{ width: 16px; height: 16px; }}
 
 QFrame#dropZone {{ border: 2px dashed #b9c3d3; border-radius: 12px; background: #fbfcfe; }}
@@ -61,10 +74,12 @@ QProgressBar::chunk {{ background: {BLUE}; border-radius: 3px; }}
 
 QFrame#drawer {{ background: white; border: 1px solid {LINE}; border-top-left-radius: 10px;
                  border-bottom-left-radius: 10px; }}
-QTableWidget {{ border: none; gridline-color: {LINE}; selection-background-color: #e6eefb;
+QTableCornerButton::section {{ background: #f7f8fa; border: none; border-bottom: 1px solid {LINE}; }}
+QTableWidget {{ background: white; border: none; gridline-color: {LINE}; selection-background-color: #e6eefb;
                 selection-color: {INK}; }}
 QHeaderView::section {{ background: #f7f8fa; border: none; border-bottom: 1px solid {LINE};
                         border-right: 1px solid {LINE}; padding: 5px 8px; font-weight: 600; }}
+QHeaderView {{ background: white; }}
 
 QFrame#toast {{ background: #1f2430; border-radius: 10px; }}
 QFrame#toast QLabel {{ color: #f2f4f8; }}

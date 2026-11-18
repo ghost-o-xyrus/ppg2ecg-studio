@@ -51,7 +51,7 @@ def test_rate_from_file_name_and_ask(synth, tmp):
     g = write_csv(tmp / "norate.csv", [synth.ppg])
     with pytest.raises(NeedRate):
         prepare(g, "ppg")
-    assert prepare(g, "ppg", rate=250).fs_source == "you"
+    assert prepare(g, "ppg", rate=250).fs_source == "your answer"
 
 
 def test_column_question(synth, tmp):

@@ -10,9 +10,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from bench.record import Record
-from bench.runner import run_record
-
 from .. import config, scoring
 from .registry import FAILED, LOADING, MISSING, READY, LoadedModel, ModelSpec, discover, load_model  # noqa: F401
 
@@ -47,6 +44,8 @@ class Result:
 def reconstruct(lm: LoadedModel, ppg128, seed=0):
     """Whole signal in, whole reconstruction out (bench.runner.run_record: the model's own windows, its
     preprocessing, overlap 0.5 with tapered stitching, or the stitching its authors require)."""
+    from bench.record import Record
+    from bench.runner import run_record
     x = np.asarray(ppg128, float)
     rec = Record("studio", "entry", x, config.WORK_FS, x, config.WORK_FS)   # ECG slot unused here
     if lm.spec.stochastic:

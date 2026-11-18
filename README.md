@@ -8,19 +8,7 @@ Track 1 of the PPG2ECG thesis.
 built-in methods: the **template baseline** and **Zhu DCT**. The seven learned models, export, the cache and
 large-file mode follow in the next versions ([Roadmap](#roadmap)).
 
-```
-┌──────────── Input ────────────┬──────────── Models ───────────┐
-│ [PPG signal] [True ECG]    ➕ │ ▶ Run all   Show [10] s from [0] s
-│  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐  │ ☑ ● Template baseline  Reference  0.18 s ▶
-│    Drop your PPG file here    │ ☑ ● Zhu DCT  Classical (linear)   0.25 s ▶
-│  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘  │                                  │
-├───────────────────────────────┴──────────────────────────────┬──┤
-│ PPG            ∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿         │📄│
-│ True ECG       ─╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──         │⇆ │
-│ Template       ─╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──  0.18 s │💾│
-│ Zhu DCT        ─╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──╫──  0.25 s │⚙ │
-└──────────────────────────────────────────────────────────────┴──┘
-```
+![PPG2ECG Studio after Run all on a synthetic recording](docs/screenshots/main.png)
 
 ## Contents
 
@@ -42,11 +30,14 @@ Windows 10 or 11, 64-bit. No administrator rights and no existing Python needed.
 
 1. Download or clone this repository.
 2. Double-click **`setup.bat`**. It
-   - fetches [uv](https://github.com/astral-sh/uv) into `.tools\uv` and, through it, a private Python 3.11;
-   - creates `.venv` and installs the packages in `requirements.txt` (about 250 MB, mostly Qt);
+   - fetches [uv](https://github.com/astral-sh/uv) into `.tools\uv`; uv uses Python 3.11 if it is installed and
+     otherwise downloads a private copy;
+   - creates `.venv` and installs the pinned packages in `requirements.txt` (about 140 MB to download, mostly
+     Qt and SciPy);
    - installs the models, runs a self-test that measures each model's speed on this computer;
    - adds a **PPG2ECG Studio** shortcut to the Start menu and the desktop.
-3. Start the app from the shortcut or with **`run.bat`**.
+3. Start the app from the shortcut or with **`run.bat`** (`run.bat --console` keeps a console open for error
+   messages). The window opens in about 2 seconds; the model dots turn green a few seconds later.
 
 ### Zhu DCT coefficients
 
@@ -59,8 +50,9 @@ setup.bat --zhu --capnobase C:\path\to\capnobase
 
 `PATH` is the folder with the 42 CapnoBase recordings, in any of the forms it is distributed in
 (`*_8min.mat`, `*_8min_signal.csv` or the Borealis `*.tab` files; [doi:10.5683/SP2/NLB8IT](https://doi.org/10.5683/SP2/NLB8IT)).
-The `.mat` files are MATLAB v7.3 and need `h5py`, which setup installs into `.venv` when needed. The fit
-reports whether it reproduces Track 1 (27,661 cycles, delay 0.234375 s). Without these coefficients the app
+The CSV and TAB files are read first; only a recording that exists solely as a `.mat` file (MATLAB v7.3) needs
+`h5py`, which setup then installs into `.venv`. The fit reports whether it reproduces Track 1 (27,661 cycles,
+delays 0.234375 s for Zhu DCT and 0.3828125 s for the template). Without these coefficients the app
 lists Zhu DCT as *not installed* and runs the template baseline alone.
 
 ## Use
@@ -77,6 +69,8 @@ lists Zhu DCT as *not installed* and runs the template baseline alone.
    double-click to reset; the status bar reads out time and value under the mouse.
 5. **Measure**: 📄 opens the metrics drawer (it opens by itself after Run all). *Model comparison* works
    without a true ECG; *Errors vs true ECG* needs one. Bold marks the best value in each column.
+
+![Metrics drawer, Errors vs true ECG](docs/screenshots/metrics.png)
 
 ⚙ *Display options*: align each reconstruction to the true ECG (removes its one constant delay, as the
 scorer does), show the true R peaks, band-pass 0.5–40 Hz as scored.
@@ -164,10 +158,12 @@ By hand:
 .venv\Scripts\python -m studio.cli %BIDMC_DIR%\bidmc_01_Signals.csv --ecg same --full
 ```
 
-| BIDMC 01, template baseline | Heart-rate error | R-peak F1 (dc) | Beat shape r | Waveform r (lag) | Fréchet | RMSSD error |
+| BIDMC 01 | Heart-rate error | R-peak F1 (dc) | Beat shape r | Waveform r (lag) | Fréchet | RMSSD error |
 |---|---|---|---|---|---|---|
-| Track 1 | 1.207 | 0.988 | 0.920 | 0.786 | 1.643 | 56.5 |
-| PPG2ECG Studio 0.1 | 1.21 | 0.988 | 0.920 | 0.786 | 1.643 | 56.5 |
+| Template baseline, Track 1 | 1.207 | 0.988 | 0.920 | 0.786 | 1.643 | 56.5 |
+| Template baseline, PPG2ECG Studio 0.1 | 1.21 | 0.988 | 0.920 | 0.786 | 1.643 | 56.5 |
+| Zhu DCT, Track 1 | 0.944 | 0.982 | 0.815 | 0.626 | 1.599 | 67.5 |
+| Zhu DCT, PPG2ECG Studio 0.1 | 0.94 | 0.982 | 0.815 | 0.626 | 1.599 | 67.5 |
 
 In the window, BIDMC files are 8 min long, so the app offers their first 2 minutes; those numbers differ from
 the whole-record values above, as they should.
@@ -214,11 +210,14 @@ bench/              trimmed copy of the thesis benchmark: dsp, metrics, runner, 
                     BIDMC / CapnoBase readers, beat pairing (kept identical so scores match Track 1)
 models/             template/, zhu_dct/, _example/   (model.yaml + adapter.py each)
 weights/            installed weights (not in Git)
-tools/              fit_baselines.py (Zhu DCT and template delay from CapnoBase)
+tools/              fit_baselines.py (Zhu DCT and template delay from CapnoBase),
+                    make_screenshots.py (the README images, from a synthetic recording)
+docs/               windows_checklist.md (manual check), screenshots/
 tests/              intake, engine, window, Track 1 reproduction
 ```
 
-No data and no weights are kept in Git.
+No data and no weights are kept in Git. The screenshots are rendered from a synthetic recording
+(`bench.datasets.make_synthetic`) with `.venv\Scripts\python tools\make_screenshots.py`.
 
 ## Roadmap
 

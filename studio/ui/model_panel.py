@@ -10,6 +10,7 @@ from ..engine import FAILED, LOADING, MISSING, READY
 from .widgets import StatusDot
 
 NEED_PPG = "Drop a PPG file first"
+START_TIP = "Start time of the plotted window"
 
 
 class ModelRow(QFrame):
@@ -102,14 +103,15 @@ class ModelPanel(QFrame):
         self.length.setRange(config.PLOT_MIN_S, config.PLOT_MAX_S)
         self.length.setValue(config.PLOT_DEFAULT_S)
         self.length.setSuffix(" s")
-        self.length.setToolTip(f"Plot length ({config.PLOT_MIN_S}-{config.PLOT_MAX_S} s). Models always run on the "
-                               "whole file.")
+        self.length_tip = (f"Plot length ({config.PLOT_MIN_S}-{config.PLOT_MAX_S} s). Models always run on the "
+                           "whole file.")
+        self.length.setToolTip(self.length_tip)
         self.start = QDoubleSpinBox()
         self.start.setRange(0, 0)
         self.start.setDecimals(1)
         self.start.setSingleStep(1.0)
         self.start.setSuffix(" s")
-        self.start.setToolTip("Start time of the plotted window")
+        self.start.setToolTip(START_TIP)
         self.length.valueChanged.connect(self._emit_window)
         self.start.valueChanged.connect(self._emit_window)
         bar.addWidget(self.run_all)
@@ -122,11 +124,14 @@ class ModelPanel(QFrame):
         lay.addWidget(title)
         lay.addLayout(bar)
         self.list = QWidget()
+        self.list.setObjectName("modelListBody")
         self.list_lay = QVBoxLayout(self.list)
         self.list_lay.setContentsMargins(0, 0, 0, 0)
         self.list_lay.setSpacing(0)
         self.list_lay.addStretch(1)
         scroll = QScrollArea()
+        scroll.setObjectName("modelList")
+        scroll.viewport().setAutoFillBackground(False)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidget(self.list)
@@ -178,10 +183,9 @@ class ModelPanel(QFrame):
         self.run_all.setToolTip(NEED_PPG if not self.has_input else
                                 "Running…" if self.busy else
                                 "Tick at least one ready model" if n == 0 else f"Run the {n} ticked models")
-        for w in (self.length, self.start):
+        for w, tip in ((self.length, self.length_tip), (self.start, START_TIP)):
             w.setEnabled(self.has_input)
-            if not self.has_input:
-                w.setToolTip(NEED_PPG)
+            w.setToolTip(tip if self.has_input else NEED_PPG)
         for r in self.rows.values():
             ready = r.status == READY
             r.play.setEnabled(ok and ready)

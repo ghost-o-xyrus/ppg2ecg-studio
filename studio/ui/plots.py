@@ -7,8 +7,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget
 
-from bench import dsp
-
 from .. import config
 from . import theme
 
@@ -28,6 +26,7 @@ def scale(y):
 
 
 def band(y, on=True):
+    from bench import dsp
     y = np.asarray(y, float)
     if not on or len(y) < 64 or np.ptp(y) < 1e-12:
         return y

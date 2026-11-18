@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import platform
-import subprocess
 import sys
 from functools import lru_cache
 
@@ -13,13 +12,11 @@ from functools import lru_cache
 def cpu_name() -> str:
     name = ""
     if sys.platform == "win32":
-        try:
-            out = subprocess.run(["powershell", "-NoProfile", "-Command",
-                                  "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name"],
-                                 capture_output=True, text=True, timeout=5,
-                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            name = out.stdout.strip()
-        except Exception:
+        try:   # the registry answers instantly (a WMI query takes seconds)
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as k:
+                name = str(winreg.QueryValueEx(k, "ProcessorNameString")[0])
+        except OSError:
             name = ""
     elif os.path.exists("/proc/cpuinfo"):
         try:

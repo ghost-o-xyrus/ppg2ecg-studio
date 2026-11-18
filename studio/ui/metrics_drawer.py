@@ -75,6 +75,7 @@ class MetricsDrawer(QFrame):
         lay.addLayout(head)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.tabs.tabBar().setDrawBase(False)
         self.t_cmp = make_table()
         self.t_err = make_table()
         self.err_stack = QStackedWidget()

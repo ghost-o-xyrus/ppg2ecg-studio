@@ -21,7 +21,7 @@ from .notices import NeedRate, Notice, TOAST
 def find_rate(raw, path, settings=None, rate=None):
     """-> (fs, source). Raises NeedRate when nothing says what the rate is."""
     if rate:
-        return float(rate), "you"
+        return float(rate), "your answer"
     if raw.fs:
         return float(raw.fs), raw.fs_source
     if settings is not None:

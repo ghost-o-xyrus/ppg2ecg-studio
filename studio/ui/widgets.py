@@ -45,8 +45,11 @@ def dispatcher() -> _Dispatcher:
 
 
 def in_gui(fn, arg=None):
-    """Call fn(arg) in the GUI thread (safe from any thread)."""
-    dispatcher().call.emit(fn, arg)
+    """Call fn(arg) in the GUI thread (safe from any thread). Dropped quietly once the app is closing."""
+    try:
+        dispatcher().call.emit(fn, arg)
+    except RuntimeError:            # the window closed while a background job was still running
+        pass
 
 
 class Task(QRunnable):
@@ -256,7 +259,7 @@ class FileCard(QFrame):
         parts = [f"Length {fmt_duration(prep.seconds)}",
                  f"{prep.fs_in:g} Hz ({prep.fs_source}) → 128 Hz",
                  f"{prep.n_beats} {beats} found"]
-        if prep.column and prep.column not in ("array",):
+        if prep.column and prep.column != "array" and not prep.column.startswith("column "):
             parts.append(f"column '{prep.column}'")
         if prep.windows_shape:
             parts.append(f"{prep.windows_shape[0]} windows joined")
@@ -308,7 +311,7 @@ class Spinner(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        p.fillRect(self.rect(), QColor(255, 255, 255, 215))
+        p.fillRect(self.rect(), QColor(255, 255, 255, 240))
         c = self.rect().center()
         r = QRectF(c.x() - 18, c.y() - 34, 36, 36)
         p.setPen(QPen(QColor(theme.LINE), 4))
@@ -330,6 +333,7 @@ class Toast(QFrame):
 
     def __init__(self, title, text, parent=None, seconds=8):
         super().__init__(parent)
+        self.title = title
         self.setObjectName("toast")
         self.setFixedWidth(340)
         lay = QHBoxLayout(self)
@@ -360,6 +364,7 @@ class Toast(QFrame):
         if self._closing:
             return
         self._closing = True
+        self.hide()
         self.closed.emit(self)
         self.deleteLater()
 
@@ -374,6 +379,8 @@ class ToastHost(QObject):
         host.installEventFilter(self)
 
     def show(self, title, text, seconds=8):
+        for old in [t for t in self.toasts if t.title == title]:   # the same notice again replaces the old one
+            old.close_now()
         t = Toast(title, text, self.host, seconds)
         t.closed.connect(self._remove)
         self.toasts.append(t)

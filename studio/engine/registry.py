@@ -92,7 +92,15 @@ def discover(models_dir: Path = config.MODELS_DIR) -> list[ModelSpec]:
     return sorted(specs, key=lambda s: (s.order, s.name.lower()))
 
 
+_IMPORT_LOCK = threading.Lock()     # models load on parallel threads; their imports must not interleave
+
+
 def _import_adapter(spec: ModelSpec):
+    with _IMPORT_LOCK:
+        return _import_adapter_locked(spec)
+
+
+def _import_adapter_locked(spec: ModelSpec):
     path = spec.folder / "adapter.py"
     mod_name = f"studio_models.{spec.id}"
     imp = importlib.util.spec_from_file_location(mod_name, path)
