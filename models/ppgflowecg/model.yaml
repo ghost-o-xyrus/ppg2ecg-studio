@@ -1,0 +1,34 @@
+id: ppgflowecg
+name: PPGFlowECG
+family: Latent rectified flow
+version: "1.0"
+order: 90
+citation: >-
+  Fang X, Jin J, Wang H et al. PPGFlowECG: Latent rectified flow with cross-modal encoding for PPG-guided
+  ECG generation and cardiovascular disease detection. arXiv:2509.19774, 2025.
+licence: "authors' repository states no licence; code and weights are fetched from the authors' own links"
+runtime: torch
+native_fs: 128
+window_s: 10
+overlap: 0                      # each window is an independent sample: concatenated, never averaged
+stochastic: true
+repo:                           # authors' code at the commit Track 1 used
+  url: https://github.com/PKUDigitalHealth/PPGFlowECG
+  commit: 56b2cd2cfa738388c60daccd788d511aa8698085
+weights:                        # authors' Hugging Face page, never re-hosted; reduced to the inference parts
+  - file: checkpoint-10.pt
+    url: https://huggingface.co/XiaochengFang/PPGFlowECG/resolve/main/checkpoint-10.pt
+    sha256: 50f1af67ad258ef5eea7ac0c09525f156f6b1997a3068575f08d4d8c6a05ecdb
+  - file: VAE-iter-40000.pth
+    url: https://huggingface.co/XiaochengFang/PPGFlowECG/resolve/main/VAE-iter-40000.pth
+    sha256: c186633aa40fa2b2e32421588b8e68d7f95a30e8069f8161fbdbcedd97347d6d
+requires: [flow_inference.pt, vae_inference.pth]
+params:
+  sampling_steps: 10
+  batch_size: 64
+setup_disk_gb: 9                # 3.8 GB download plus the reduced copy, briefly
+min_ram_gb: 5
+preprocessing: PPG band-passed 0.5-8 Hz over the whole record; 10-s windows, z-score per window
+description: >-
+  Encodes the PPG with a cross-modal VAE, then turns Gaussian noise into an ECG latent with 10 steps of a
+  rectified flow, and decodes it. Stochastic: a fixed seed gives the same output every run.

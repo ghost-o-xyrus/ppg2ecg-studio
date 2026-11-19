@@ -39,6 +39,7 @@ class Prepared:
     notices: list = field(default_factory=list)
     embedded: dict = field(default_factory=dict)   # other signals in the same file: name -> (array, fs, t0)
     windows_shape: tuple | None = None
+    x_in: np.ndarray | None = None    # the same signal at the file's own rate (what the models are given)
 
     @property
     def fs(self):
@@ -90,17 +91,19 @@ def from_array(x, fs, kind, *, path="", name="", fs_source="", column="", fmt=""
     if n:
         notices.append(n)
     x128 = fs_adjust.to_work_rate(x, fs)
+    x_in = x
     inverted = flipped = False
     if kind == "ppg":
         y, peaks, ns = checks.ppg_checks(x128)
         flipped = y is not x128 and bool(np.any(y != x128))
         x128 = y
+        x_in = -x if flipped else x
     else:
         peaks, inverted, ns = checks.ecg_checks(x128)
     notices += ns
     return Prepared(kind, str(path), name or Path(path).name, x128, float(fs), fs_source, column, fmt, t0, len(x),
                     len(x128) / config.WORK_FS, np.asarray(peaks, int), bpm, inverted, flipped, cropped, notices,
-                    embedded or {}, wshape)
+                    embedded or {}, wshape, x_in)
 
 
 def prepare(path, kind="ppg", settings=None, rate=None, column=None, limit_s=config.MAX_SECONDS,
@@ -135,8 +138,8 @@ def align(ppg: Prepared, ecg: Prepared | None):
     fs = config.WORK_FS
     notices = []
     a, b = ppg.x, ecg.x
-    if ppg.t0 is not None and ecg.t0 is not None and abs(ppg.t0 - ecg.t0) > 1.0 / fs:
-        d = int(round((ecg.t0 - ppg.t0) * fs))       # ECG starts d samples after the PPG
+    d = _offset(ppg, ecg)
+    if d:
         if d > 0:
             a = a[d:]
         else:
@@ -151,6 +154,26 @@ def align(ppg: Prepared, ecg: Prepared | None):
         raise IntakeError("Too little overlap", f"The PPG and true ECG overlap for only {n / fs:.1f} s; at least "
                                                 f"{config.MIN_SECONDS:.0f} s are needed.")
     return a[:n], b[:n], notices
+
+
+def _offset(ppg: Prepared, ecg: Prepared | None) -> int:
+    """128-Hz samples by which the true ECG starts after the PPG (time stamps), 0 without them."""
+    fs = config.WORK_FS
+    if ecg is None or ppg.t0 is None or ecg.t0 is None or abs(ppg.t0 - ecg.t0) <= 1.0 / fs:
+        return 0
+    return int(round((ecg.t0 - ppg.t0) * fs))
+
+
+def model_input(ppg: Prepared, ecg: Prepared | None, x_aligned):
+    """The aligned PPG at the file's own rate -> (signal, rate). The models get this, so each one is
+    resampled once, straight to its own rate, as in Track 1 (a detour through 128 Hz changes the 125-Hz
+    models' beats slightly)."""
+    if ppg.x_in is None:
+        return np.asarray(x_aligned, float), config.WORK_FS
+    start_s = max(_offset(ppg, ecg), 0) / config.WORK_FS
+    i0 = int(round(start_s * ppg.fs_in))
+    n = int(round(len(x_aligned) / config.WORK_FS * ppg.fs_in))
+    return np.asarray(ppg.x_in[i0:i0 + n], float), float(ppg.fs_in)
 
 
 def aligned_peaks(ppg: Prepared, x_aligned):

@@ -1,0 +1,29 @@
+id: cardiogan
+name: CardioGAN
+family: GAN (attention U-Net)
+version: "1.0"
+order: 20
+citation: >-
+  Sarkar P, Etemad A. CardioGAN: Attentive generative adversarial network with dual discriminators for
+  synthesis of ECG from PPG. AAAI, 2021.
+licence: "authors' code and weights: CC BY-NC 4.0 (non-commercial use only)"
+runtime: onnx
+native_fs: 128
+window_s: 4
+overlap: 0.5
+stochastic: false
+repo:                           # authors' code at the commit Track 1 used
+  url: https://github.com/pritamqu/ppg2ecg-cardiogan
+  commit: d7239b0004a138101bdf597961be4d0af8ea2d5e
+weights:
+  - file: cardiogan_ppg2ecg_generator.zip       # authors' GitHub release (TF2 checkpoint), never re-hosted
+    url: https://github.com/pritamqu/ppg2ecg-cardiogan/releases/download/model_weights/cardiogan_ppg2ecg_generator.zip
+    sha256: 86ec53e984723ce37a064ea7668b0908d0eb2ea7bcdafb60d197f7dadb77da0b
+    unzip: true
+requires: [model.onnx]          # converted from the checkpoint at setup (TensorFlow installed temporarily)
+setup_disk_gb: 2
+min_ram_gb: 1
+preprocessing: PPG band-passed 1-8 Hz over the whole record; 4-s windows scaled to [-1, 1]; output FIR 3-45 Hz
+description: >-
+  An attention U-Net generator trained adversarially with two discriminators (time and frequency), released
+  by its authors. Its weights saw every subject of BIDMC and CapnoBase, so results on those are seen data.

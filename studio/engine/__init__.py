@@ -5,12 +5,15 @@ v0.2, so the window code does not change when it moves out.
 """
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 
 import numpy as np
 
 from .. import config, scoring
+
+os.environ.setdefault("TQDM_DISABLE", "1")      # PPGFlowECG's sampler would print a progress bar
 from .registry import FAILED, LOADING, MISSING, READY, LoadedModel, ModelSpec, discover, load_model  # noqa: F401
 
 
@@ -41,15 +44,36 @@ class Result:
         return [d.get(c.key, float("nan")) for c in columns]
 
 
-def reconstruct(lm: LoadedModel, ppg128, seed=0):
-    """Whole signal in, whole reconstruction out (bench.runner.run_record: the model's own windows, its
-    preprocessing, overlap 0.5 with tapered stitching, or the stitching its authors require)."""
+def run_order(ids, specs):
+    """Fast models first (measured speed from setup, else the manifest order); the slow sampled models last."""
+    import json
+    try:
+        speed = json.loads((config.WEIGHTS_DIR / "speed.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        speed = {}
+    by_id = {s.id: s for s in specs}
+
+    def key(i):
+        s = by_id.get(i)
+        rt = speed.get(i, {}).get("rt_factor")
+        return (bool(s and s.stochastic), rt if rt is not None else 1e9, s.order if s else 99)
+    return sorted(ids, key=key)
+
+
+def reconstruct(lm: LoadedModel, ppg128, seed=0, src=None):
+    """Whole signal in, whole reconstruction out at 128 Hz (bench.runner.run_record: the model's own windows,
+    its preprocessing, overlap 0.5 with tapered stitching, or the stitching its authors require).
+    src = (signal, rate) at the file's own rate (intake.model_input); the model is then fed from it, so it is
+    resampled once, straight to the model's rate, as in Track 1."""
     from bench.record import Record
     from bench.runner import run_record
     x = np.asarray(ppg128, float)
-    rec = Record("studio", "entry", x, config.WORK_FS, x, config.WORK_FS)   # ECG slot unused here
+    sx, sfs = (np.asarray(src[0], float), float(src[1])) if src is not None else (x, config.WORK_FS)
+    rec = Record("studio", "entry", sx, sfs, sx, sfs)   # ECG slot unused here
     if lm.spec.stochastic:
         np.random.seed(seed)
+        if hasattr(lm.adapter, "seed"):             # RDDM, PPGFlowECG: torch.manual_seed(adapter.seed) per run
+            lm.adapter.seed = int(seed)
     with lm.lock:                                   # one run per model at a time
         t0 = time.perf_counter()
         out = run_record(lm.adapter, rec, eval_fs=config.WORK_FS, overlap=config.STITCH_OVERLAP,
@@ -61,8 +85,8 @@ def reconstruct(lm: LoadedModel, ppg128, seed=0):
     return pred[: len(x)], gen, float(out.infer_seconds), int(out.n_windows)
 
 
-def run_model(lm: LoadedModel, ppg128, ppg_peaks, ecg128=None, seed=0) -> Result:
-    pred, gen, inf, nw = reconstruct(lm, ppg128, seed)
+def run_model(lm: LoadedModel, ppg128, ppg_peaks, ecg128=None, seed=0, src=None) -> Result:
+    pred, gen, inf, nw = reconstruct(lm, ppg128, seed, src)
     r = Result(lm.spec.id, lm.spec.name, pred, gen, inf, nw, lm.device,
                seed=seed if lm.spec.stochastic else None)
     r.vs_ppg = scoring.score_vs_ppg(pred, ppg_peaks)

@@ -1,8 +1,13 @@
-# PPG2ECG Studio v0.1 (Python 3.11, Windows 10/11 64-bit); versions as tested
+# PPG2ECG Studio v0.2 (Python 3.11, Windows 10/11 64-bit); versions as tested
 numpy==2.4.6
 scipy==1.17.1
 pandas==3.1.1
 PyYAML==6.0.3
 PySide6-Essentials==6.12.0   # Qt widgets only (no web engine)
 pyqtgraph==0.14.0
+torch==2.15.0                # CPU build on Windows: RDDM, PPGFlowECG, ONNX export at setup
+onnxruntime-directml==1.24.4 # CardioGAN, Chiu, CLEP-GAN, P2E-WGAN, Yalcin on any GPU (DirectML) or the CPU
+onnx==1.23.2                 # writes the ONNX files at setup
+einops==0.8.2                # imported by the PPGFlowECG code
+tqdm==4.70.1                 # imported by the PPGFlowECG code
 pytest==9.2.0                # tests (run_tests.bat)

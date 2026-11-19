@@ -1,6 +1,6 @@
 """Command-line run: the same intake, models and scorer as the window, printed as tables.
 
-    python -m studio.cli PPG_FILE [--ecg ECG_FILE | --ecg same] [--models template,zhu_dct] [--rate 125]
+    python -m studio.cli PPG_FILE [--ecg ECG_FILE | --ecg same] [--models template,clep_gan] [--rate 125]
                          [--column PLETH] [--full] [--out reconstruction_folder]
 
 --ecg same   take the true ECG from the PPG file itself (e.g. BIDMC: PLETH and II in one CSV)
@@ -70,14 +70,17 @@ def main(argv=None):
         print("  note:", n.title, "-", n.text)
     want = [m.strip() for m in a.models.split(",") if m.strip()]
     specs = [s for s in engine.discover() if not want or s.id in want]
+    from .engine import device as devmod
+    dev = devmod.probe(settings.get("device", "auto"))
     results = []
     peaks = intake.aligned_peaks(p, ppg)
+    src = intake.model_input(p, e, ppg)
     for s in specs:
-        lm = engine.load_model(s)
+        lm = engine.load_model(s, dev)
         if lm.status != engine.READY:
             print(f"  {s.name}: {lm.status} ({lm.error})")
             continue
-        r = engine.run_model(lm, ppg, peaks, ecg)
+        r = engine.run_model(lm, ppg, peaks, ecg, src=src)
         results.append(r)
         if a.out:
             Path(a.out).mkdir(parents=True, exist_ok=True)

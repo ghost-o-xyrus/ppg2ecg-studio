@@ -19,7 +19,7 @@ params:
 weights:
   - file: zhu_capnobase.npz      # W (12 x 100), b (100), pat; 27,661 CapnoBase cycles
     url: release://zhu_capnobase.npz
-    sha256: null                 # filled in when the Release asset is uploaded
+    sha256: 134c976f33e627699a43146d0b81689ac6d5a3e77146d38cc09d857b5eccf994   # GitHub Release asset zhu_capnobase.npz
     fit: "python setup.py --zhu --capnobase PATH   (fits it locally from CapnoBase instead of downloading)"
 min_ram_gb: 0.1
 description: >-

@@ -1,0 +1,28 @@
+id: clep_gan
+name: CLEP-GAN
+family: GAN (contrastive)
+version: "1.0"
+order: 13
+citation: >-
+  Li X, Xu S, Habib F, Aminnejad N, Gupta A, Huang H et al. CLEP-GAN: an innovative approach to
+  subject-independent ECG reconstruction from PPG signals. BMC Bioinformatics 26:306, 2025.
+licence: "authors' code: GPL-3.0; weights: trained by us (Kaggle job k91) with the authors' recipe"
+runtime: onnx
+native_fs: 125
+window_s: 4.096
+overlap: 0.5
+stochastic: false
+repo:                           # authors' code at the commit our weights were trained with
+  url: https://github.com/Mathematics-Analytics-Data-Science-Lab/CLEP-GAN
+  commit: 9b35d058c40bb7cf2a3007e8180a467ccd46de3e
+weights:
+  - file: clep_gan_k91.zip
+    url: release://clep_gan_k91.zip
+    sha256: 16dcbcc75fa02641e8010cac480d62ef1b5b996363c6d34b37deaff0abf400d2   # GitHub Release asset clep_gan_k91.zip
+    unzip: true                 # weights.pth + meta.json
+requires: [weights.pth, meta.json, model.onnx]   # model.onnx is exported from the authors' code at setup
+min_ram_gb: 1.5
+preprocessing: PPG detrended and band-passed 0.3-8 Hz; four 128-sample segments per window, each scaled to [-1, 1]
+description: >-
+  A pair of attention U-Nets: the PPG encoder's features drive the ECG decoder. Trained by us on 28
+  BIDMC subjects with the authors' data processing and trainer.

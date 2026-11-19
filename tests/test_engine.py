@@ -41,7 +41,7 @@ def test_run_both_models(monkeypatch, zhu_weights):
     ppg = dsp.resample(r.ppg, r.ppg_fs, 128)
     ecg = dsp.resample(r.ecg, r.ecg_fs, 128)
     peaks = dsp.detect_ppg_peaks(ppg, 128)
-    for s in engine.discover():
+    for s in [s for s in engine.discover() if s.id in ("template", "zhu_dct")]:   # the two NumPy baselines
         lm = engine.load_model(s)
         assert lm.status == engine.READY, lm.error
         res = engine.run_model(lm, ppg, peaks, ecg)

@@ -46,6 +46,8 @@ class ModelSpec:
     description: str = ""
     params: dict = field(default_factory=dict)
     weights: list = field(default_factory=list)
+    requires: list = field(default_factory=list)     # files in weights/<id>/ that mean "installed"
+    repo: dict = field(default_factory=dict)         # authors' code: {url, commit}, fetched into weights/<id>/repo
     raw: dict = field(default_factory=dict)
 
     @property
@@ -53,7 +55,10 @@ class ModelSpec:
         return config.WEIGHTS_DIR / self.id
 
     def missing_weights(self) -> list[str]:
-        return [w["file"] for w in self.weights if not (self.weights_dir / w["file"]).exists()]
+        need = list(self.requires) or [w["file"] for w in self.weights]
+        if self.repo:
+            need.append("repo")
+        return [f for f in need if not (self.weights_dir / f).exists()]
 
     @property
     def installed(self) -> bool:
@@ -72,7 +77,8 @@ def read_spec(folder: Path) -> ModelSpec:
                      runtime=str(m.get("runtime", "numpy")), always_installed=bool(m.get("always_installed", False)),
                      citation=str(m.get("citation", "")).strip(), licence=str(m.get("licence", "")),
                      description=str(m.get("description", "")).strip(), params=dict(m.get("params") or {}),
-                     weights=list(m.get("weights") or []), raw=m)
+                     weights=list(m.get("weights") or []), requires=[str(f) for f in m.get("requires") or []],
+                     repo=dict(m.get("repo") or {}), raw=m)
 
 
 def discover(models_dir: Path = config.MODELS_DIR) -> list[ModelSpec]:
@@ -137,9 +143,13 @@ def load_model(spec: ModelSpec, device: str = "cpu") -> LoadedModel:
         mod = _import_adapter(spec)
         ctx = SimpleNamespace(spec=spec, weights_dir=spec.weights_dir, device=device, info=lm.info)
         ad = mod.build(ctx)
-        ad.load()
+        if spec.runtime == "torch":     # authors' code imported by plain module names: one load at a time
+            with _IMPORT_LOCK:
+                ad.load()
+        else:
+            ad.load()
         lm.adapter, lm.status = ad, READY
-        lm.device = "CPU" if device == "cpu" else device
+        lm.device = lm.info.get("device") or "CPU"     # ONNX models report the provider they got
     except Exception as e:
         lm.status, lm.error = FAILED, f"{type(e).__name__}: {e}"
         traceback.print_exc()

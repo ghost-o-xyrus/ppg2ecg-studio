@@ -10,8 +10,9 @@
     python setup.py --device auto|gpu|cpu      override the automatic device choice
     python setup.py --shortcut                 (re)create the Start-menu and desktop shortcuts
 
-v0.1 ships the two NumPy methods (template baseline, Zhu DCT). The flags of the seven learned models are
-accepted now and install them from v0.2 on.
+Our weights (Zhu DCT, Chiu, CLEP-GAN, P2E-WGAN, Yalcin) come from this repository's GitHub Release; the
+authors' released weights (CardioGAN, PPGFlowECG, RDDM) come from the authors' own links, and every
+author's code from their repository at a pinned commit. Nothing of theirs is re-hosted.
 """
 from __future__ import annotations
 
@@ -22,21 +23,24 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
+import zipfile
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent
+os.environ.setdefault("TQDM_DISABLE", "1")          # PPGFlowECG's sampler would print a progress bar
 sys.path.insert(0, str(ROOT))
 
 from studio import config, engine  # noqa: E402
 
-# flag -> model id, for every method of the thesis (v0.1 installs the first two)
-FLAGS = {"zhu": "zhu_dct", "cardiogan": "cardiogan", "ppgflowecg": "ppgflowecg", "rddm": "rddm",
-         "clepgan": "clep_gan", "chiu": "chiu2020", "p2e": "p2e_wgan", "yalcin": "yalcin2026"}
-LATER = {"cardiogan", "ppgflowecg", "rddm", "clep_gan", "chiu2020", "p2e_wgan", "yalcin2026"}
+# flag -> model id, for every method of the thesis
+FLAGS = {flag: mid for mid, flag in config.SETUP_FLAGS.items()}
 SPEED_FILE = config.WEIGHTS_DIR / "speed.json"
 
 
@@ -105,11 +109,153 @@ def _capnobase_needs_h5py(root):
     return any(f.name.split("_")[0] not in tables for f in root.rglob("*_8min.mat"))
 
 
-def install(spec, offline=None, capnobase=None):
+def _uv():
+    for c in (shutil.which("uv"), ROOT / ".tools" / "uv" / "uv.exe", ROOT / ".tools" / "uv" / "bin" / "uv.exe"):
+        if c and os.path.exists(c):
+            return str(c)
+    return None
+
+
+@contextmanager
+def temp_env(packages, python="3.11"):
+    """A throw-away Python environment (with its own package cache) for one-off setup tools, such as
+    TensorFlow for the CardioGAN conversion; everything is deleted afterwards."""
+    uv = _uv()
+    if uv is None:
+        raise RuntimeError("uv is needed for this step (run setup.bat once)")
+    d = Path(tempfile.mkdtemp(prefix="ppg2ecg-setup-"))
+    env = dict(os.environ, UV_CACHE_DIR=str(d / "cache"))
+    try:
+        subprocess.run([uv, "venv", "-q", "--python", python, str(d / "venv")], env=env, check=True)
+        py = d / "venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        subprocess.run([uv, "pip", "install", "-q", "--python", str(py), *packages], env=env, check=True)
+        yield py
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _github_zip(url, commit):
+    slug = url.rstrip("/").removesuffix(".git").split("github.com/", 1)[1]
+    return f"https://codeload.github.com/{slug}/zip/{commit}"
+
+
+def fetch_repo(spec, dest=None):
+    """The authors' code at the pinned commit -> weights/<id>/repo (a GitHub source archive, no git needed)."""
+    r = spec.repo
+    dest = Path(dest or spec.weights_dir / "repo")
+    stamp = dest / ".commit"
+    if stamp.exists() and stamp.read_text().strip() == r["commit"]:
+        return dest
+    say(f"    authors' code: {r['url']} at {r['commit'][:10]}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    z = dest.parent / (dest.name + ".zip")
+    _download(_github_zip(r["url"], r["commit"]), z)
+    tmp = dest.parent / (dest.name + ".tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
+    with zipfile.ZipFile(z) as f:
+        f.extractall(tmp)
+    top = [p for p in tmp.iterdir() if p.is_dir()]
+    shutil.rmtree(dest, ignore_errors=True)
+    shutil.move(str(top[0] if len(top) == 1 else tmp), str(dest))
+    shutil.rmtree(tmp, ignore_errors=True)
+    z.unlink(missing_ok=True)
+    stamp.write_text(r["commit"] + "\n")
+    return dest
+
+
+def _flag(model_id):
+    return next((f for f, m in FLAGS.items() if m == model_id), model_id)
+
+
+def _gdrive_folder(spec, entries):
+    """Files from a shared Google Drive folder (RDDM). Drive rate-limits automated downloads: retry with
+    back-off, then print the link for --offline."""
+    url = entries[0]["url"].replace("gdrive-folder://", "https://drive.google.com/drive/folders/")
+    need = [w["file"] for w in entries if not (spec.weights_dir / w["file"]).exists()]
+    if not need:
+        return True
+    say(f"    downloading {', '.join(need)} from the authors' Google Drive folder ...")
+    try:
+        with temp_env(["gdown==5.2.0"]) as py:
+            for k in range(3):
+                out = Path(tempfile.mkdtemp(prefix="ppg2ecg-drive-"))
+                try:
+                    subprocess.run([str(py), "-m", "gdown", "--folder", url, "-O", str(out), "--remaining-ok"])
+                    for f in need:
+                        hit = next(out.rglob(f), None)
+                        if hit is not None:
+                            shutil.move(str(hit), str(spec.weights_dir / f))
+                finally:
+                    shutil.rmtree(out, ignore_errors=True)
+                need = [f for f in need if not (spec.weights_dir / f).exists()]
+                if not need:
+                    return True
+                say(f"    Google Drive did not deliver everything (retry {k + 1}/3) ...")
+                time.sleep(20 * (k + 1))
+    except Exception as e:  # noqa: BLE001
+        say(f"    {e}")
+    say(f"  {spec.name}: Google Drive refused the download. Download these files by hand from\n"
+        f"    {url}\n    ({', '.join(need)}) into one folder and run:  setup.py --{_flag(spec.id)} --offline FOLDER")
+    return False
+
+
+def _total_ram_gb():
+    if sys.platform != "win32":
+        return None
+    import ctypes
+
+    class MS(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
+            (n, ctypes.c_ulonglong) for n in ("total", "avail", "tpage", "apage", "tvirt", "avirt", "aext")]
+    m = MS()
+    m.len = ctypes.sizeof(MS)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+    return m.total / 2 ** 30
+
+
+def _room_for(spec, force):
+    """Disk and RAM check before a large model (PPGFlowECG: 3.8 GB download, about 5 GB RAM while running)."""
+    disk = float(spec.raw.get("setup_disk_gb", 0))
+    ram = float(spec.raw.get("min_ram_gb", 0))
+    config.WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(config.WEIGHTS_DIR).free / 2 ** 30
+    total = _total_ram_gb()
+    problems = []
+    if disk and free < disk:
+        problems.append(f"needs {disk:.0f} GB of free disk during setup, {free:.1f} GB free")
+    if ram >= 2 and total is not None and total < ram:
+        problems.append(f"needs about {ram:.0f} GB of RAM, this computer has {total:.1f} GB")
+    if problems and not force:
+        say(f"  {spec.name}: skipped - " + "; ".join(problems) + ". Add --force to install it anyway.")
+        return False
+    return True
+
+
+def _hook(spec, offline):
+    """The model's own setup step (adapter.py: setup(ctx, say)) once its files are in place."""
+    mod = engine.registry._import_adapter(spec)
+    if hasattr(mod, "setup"):
+        ctx = SimpleNamespace(spec=spec, weights_dir=spec.weights_dir, device="cpu", info={}, offline=offline,
+                              temp_env=temp_env, download=_download, root=ROOT)
+        mod.setup(ctx, say)
+
+
+def _size(d):
+    return sum(f.stat().st_size for f in Path(d).rglob("*") if f.is_file()) if Path(d).exists() else 0
+
+
+def install(spec, offline=None, capnobase=None, force=False):
     """-> True when the model's weights are in place."""
     if spec.always_installed or not spec.weights:
         say(f"  {spec.name}: built in")
         return True
+    if spec.id != "zhu_dct":
+        if spec.installed and not force:
+            say(f"  {spec.name}: installed")
+            return True
+        if not _room_for(spec, force):
+            return False
+        say(f"  {spec.name}:")
     spec.weights_dir.mkdir(parents=True, exist_ok=True)
     if spec.id == "zhu_dct" and capnobase:
         if not _capnobase_needs_h5py(capnobase) or ensure_h5py():
@@ -121,6 +267,7 @@ def install(spec, offline=None, capnobase=None):
                 say(f"  {spec.name}: fitting failed: {e}")
                 return False
         return not spec.missing_weights()
+    drive = [w for w in spec.weights if str(w.get("url", "")).startswith("gdrive-folder://")]
     for w in spec.weights:
         dest = spec.weights_dir / w["file"]
         if dest.exists():
@@ -138,6 +285,8 @@ def install(spec, offline=None, capnobase=None):
                 say(f"  {spec.name}: {w['file']} copied from {hits[0].parent}")
                 continue
         url = str(w.get("url", ""))
+        if url.startswith("gdrive-folder://"):
+            continue
         if url.startswith("release://"):
             url = config.RELEASE_URL.rstrip("/") + "/" + url[len("release://"):]
         if "YOUR_GITHUB_USERNAME" in url or not url:
@@ -153,13 +302,82 @@ def install(spec, offline=None, capnobase=None):
             say(f"  {spec.name}: {e}")
             if "fit" in w:
                 say(f"    Instead: {w['fit']}")
-            say(f"    Or download it by hand from {url} and run  setup.py --offline FOLDER")
+            say(f"    Or download it by hand from {url} and run  setup.py --{_flag(spec.id)} --offline FOLDER")
             return False
+    if drive and not _gdrive_folder(spec, drive):
+        return False
+    if spec.id == "zhu_dct":
+        return True
+    try:
+        for w in spec.weights:
+            f = spec.weights_dir / w["file"]
+            if w.get("sha256") and f.exists():
+                _verify(f, w["sha256"])
+            if w.get("unzip") and f.exists():
+                with zipfile.ZipFile(f) as z:
+                    z.extractall(spec.weights_dir)
+                f.unlink()
+        if spec.repo:
+            fetch_repo(spec)
+        _hook(spec, offline)
+    except Exception as e:  # noqa: BLE001 - one model failing must not stop the others
+        msg = str(e).strip().splitlines()[0][:300] if str(e).strip() else ""
+        say(f"  {spec.name}: {type(e).__name__}: {msg}")
+        return False
+    missing = spec.missing_weights()
+    if missing:
+        say(f"  {spec.name}: still missing {', '.join(missing)}")
+        return False
+    say(f"    installed ({_size(spec.weights_dir) / 1e6:.0f} MB)")
     return True
 
 
 # ---------------------------------------------------------------- self-test and speed
-def check(specs, device="cpu"):
+GPU_TOL = 1e-3          # max |GPU - CPU| output accepted before a model is kept on the CPU
+
+
+def _timed(lm, ppg, peaks):
+    engine.run_model(lm, ppg, peaks)                  # warm-up (first-run allocations, graph optimisation)
+    return engine.run_model(lm, ppg, peaks)
+
+
+def _pick_device(s, ppg, peaks, setting):
+    """ONNX models: run on the GPU and on the CPU; keep the GPU only if it works, agrees with the CPU within
+    GPU_TOL and is faster. The choice is remembered (weights/device.json). -> (LoadedModel, Result, note)."""
+    from studio.engine import device as devmod
+    from studio.engine import onnx_run
+    cpu = engine.load_model(s, "cpu")
+    if cpu.status != engine.READY:
+        return cpu, None, ""
+    rc = _timed(cpu, ppg, peaks)
+    if s.runtime != "onnx" or devmod.probe(setting) != "gpu":
+        return cpu, rc, ""
+    onnx_run.remember(s.id, "auto")
+    gpu = engine.load_model(s, "gpu")
+    if gpu.status != engine.READY or gpu.device == "CPU":
+        onnx_run.remember(s.id, "cpu")
+        return cpu, rc, "GPU refused the model; CPU"
+    try:
+        rg = _timed(gpu, ppg, peaks)
+    except Exception as e:  # noqa: BLE001
+        onnx_run.remember(s.id, "cpu")
+        return cpu, rc, f"GPU failed ({type(e).__name__}); CPU"
+    if getattr(gpu.adapter, "device_label", "CPU") == "CPU":       # a GPU run failed and fell back to the CPU
+        onnx_run.remember(s.id, "cpu")
+        return cpu, rc, "an operation failed on the GPU; CPU"
+    diff = float(np.max(np.abs(rg.pred - rc.pred)))
+    if diff > GPU_TOL:
+        onnx_run.remember(s.id, "cpu")
+        return cpu, rc, f"GPU output differs by {diff:.1e}; CPU"
+    if rg.gen_s > rc.gen_s:
+        onnx_run.remember(s.id, "cpu")
+        return cpu, rc, f"CPU faster than GPU ({rc.gen_s:.3f} s vs {rg.gen_s:.3f} s)"
+    onnx_run.remember(s.id, "gpu")
+    return gpu, rg, f"GPU {rg.gen_s:.3f} s vs CPU {rc.gen_s:.3f} s, max diff {diff:.0e}"
+
+
+def check(specs, setting="auto"):
+    """Self-test and speed of every installed model on a 30-s synthetic PPG; picks each ONNX model's device."""
     from bench import dsp
     from bench.datasets import make_synthetic
     r = make_synthetic(subject="check", duration=30.0, fs=128.0, hr=72.0, seed=3)
@@ -168,17 +386,25 @@ def check(specs, device="cpu"):
     speed = {}
     ok_all = True
     for s in specs:
-        lm = engine.load_model(s, device)
-        if lm.status != engine.READY:
-            say(f"  {s.name:<20} {lm.status}  {lm.error}")
-            ok_all &= lm.status == engine.MISSING
+        if not s.installed:
+            say(f"  {s.name:<20} not installed")
             continue
-        res = engine.run_model(lm, ppg, peaks)
+        try:
+            lm, res, note = _pick_device(s, ppg, peaks, setting)
+        except Exception as e:  # noqa: BLE001
+            say(f"  {s.name:<20} FAIL  {type(e).__name__}: {e}")
+            ok_all = False
+            continue
+        if res is None:
+            say(f"  {s.name:<20} {lm.status}  {lm.error[:200]}")
+            ok_all = False
+            continue
         good = len(res.pred) == len(ppg) and bool(np.isfinite(res.pred).all())
         speed[s.id] = dict(rt_factor=res.rt_factor, load_s=lm.load_seconds, device=lm.device,
                            beats=res.vs_ppg["beats"], pulses=res.vs_ppg["pulses"])
-        say(f"  {s.name:<20} {'ok  ' if good else 'FAIL'} load {lm.load_seconds:5.2f} s   "
-            f"10 s of PPG in {res.rt_factor * 10:6.3f} s   beats {res.vs_ppg['beats']}/{res.vs_ppg['pulses']}")
+        say(f"  {s.name:<20} {'ok  ' if good else 'FAIL'} {lm.device:<15} load {lm.load_seconds:5.2f} s   "
+            f"10 s of PPG in {res.rt_factor * 10:6.3f} s   beats {res.vs_ppg['beats']}/{res.vs_ppg['pulses']}"
+            + (f"   ({note})" if note else ""))
         ok_all &= good
     config.WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
     old = json.loads(SPEED_FILE.read_text()) if SPEED_FILE.exists() else {}
@@ -189,16 +415,14 @@ def check(specs, device="cpu"):
 
 def list_models():
     speed = json.loads(SPEED_FILE.read_text()) if SPEED_FILE.exists() else {}
-    say(f"  {'id':<12} {'name':<20} {'installed':<10} {'size':>9}  {'10 s of PPG in':>14}")
-    specs = specs_by_id()
-    for s in specs.values():
-        size = sum(f.stat().st_size for f in s.weights_dir.rglob("*") if f.is_file()) if s.weights_dir.exists() else 0
-        sp = speed.get(s.id, {}).get("rt_factor")
-        say(f"  {s.id:<12} {s.name:<20} {'yes' if s.installed else 'no':<10} {size / 1e3:>7.0f} kB  "
-            f"{(f'{sp * 10:.3f} s') if sp else '-':>14}")
-    for flag, mid in FLAGS.items():
-        if mid not in specs:
-            say(f"  {mid:<12} {'(--' + flag + ')':<20} {'later':<10}")
+    say(f"  {'id':<12} {'name':<14} {'flag':<14} {'installed':<10} {'size':>8}  {'device':<15} {'10 s of PPG in':>14}")
+    for s in specs_by_id().values():
+        sp = speed.get(s.id, {})
+        rt = sp.get("rt_factor")
+        flag = "--" + config.SETUP_FLAGS[s.id] if s.id in config.SETUP_FLAGS else "(built in)"
+        say(f"  {s.id:<12} {s.name:<14} {flag:<14} {'yes' if s.installed else 'no':<10} "
+            f"{_size(s.weights_dir) / 1e6:>5.0f} MB  {sp.get('device', '-') if s.installed else '-':<15} "
+            f"{(f'{rt * 10:.3f} s') if rt and s.installed else '-':>14}")
 
 
 # ---------------------------------------------------------------- shortcuts
@@ -237,6 +461,7 @@ def main(argv=None):
     ap.add_argument("--offline", metavar="FOLDER")
     ap.add_argument("--capnobase", metavar="PATH", help="fit Zhu DCT from CapnoBase instead of downloading it")
     ap.add_argument("--add-model", metavar="FOLDER")
+    ap.add_argument("--force", action="store_true", help="reinstall, and install even when disk or RAM look short")
     ap.add_argument("--shortcut", action="store_true")
     ap.add_argument("--no-shortcut", action="store_true")
     a = ap.parse_args(argv)
@@ -245,7 +470,8 @@ def main(argv=None):
 
     if a.device:
         settings.set("device", a.device)
-        say(f"Device set to {a.device} (v0.1 runs the NumPy methods on the CPU in any case).")
+        say(f"Device set to {a.device}. The ONNX models (CardioGAN, Chiu, CLEP-GAN, P2E-WGAN, Yalcin) follow it; "
+            "RDDM and PPGFlowECG always run on the CPU.")
     if a.list:
         list_models()
         return 0
@@ -273,15 +499,12 @@ def main(argv=None):
         say("Installing models")
         install(specs["template"])
         for mid in wanted or [s.id for s in specs.values()]:
-            if mid in LATER:
-                say(f"  {mid}: arrives in v0.2 (skipped)")
-                continue
-            if mid in specs and not install(specs[mid], a.offline, a.capnobase):
+            if mid in specs and not install(specs[mid], a.offline, a.capnobase, a.force):
                 not_installed.append(specs[mid].name)
         say()
     if wanted or a.check or a.offline:
         say("Self-test and speed on this computer (30 s synthetic PPG)")
-        ok &= check(list(engine.discover()))
+        ok &= check(list(engine.discover()), settings.get("device", "auto"))
         say()
     if (a.all and not a.no_shortcut) or a.shortcut:
         make_shortcuts()

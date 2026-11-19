@@ -1,0 +1,28 @@
+id: yalcin2026
+name: Yalcin
+family: U-Net + Transformer GAN
+version: "1.0"
+order: 12
+citation: >-
+  Yalcin and Latoschik. End-to-end non-invasive ECG signal generation from PPG signal: a
+  self-supervised learning approach. Frontiers in Physiology, 2026.
+licence: "authors' code: MIT; weights: trained by us (Kaggle job k93) with the authors' recipe"
+runtime: onnx
+native_fs: 128
+window_s: 4
+overlap: 0.5
+stochastic: false
+repo:                           # authors' code at the commit our weights were trained with
+  url: https://github.com/m1237/self-supervised-ppg-to-ecg
+  commit: 99cf07a29f01943de566f62c4e37dab4d454c0c7
+weights:
+  - file: yalcin2026_k93.zip
+    url: release://yalcin2026_k93.zip
+    sha256: 1c00300ac013c226ad8c1208e6f4cbaf72ddf306b2c4d2504808c4c265b525d8   # GitHub Release asset yalcin2026_k93.zip
+    unzip: true                 # weights.pth + meta.json
+requires: [weights.pth, meta.json, model.onnx]   # model.onnx is exported from the authors' code at setup
+min_ram_gb: 0.5
+preprocessing: PPG band-passed 0.5-8 Hz; 4-s windows scaled to [-1, 1]
+description: >-
+  A U-Net with a Transformer bottleneck, pre-trained self-supervised and then as a GAN. Trained by us
+  on MIMIC PERform AF with the authors' code.

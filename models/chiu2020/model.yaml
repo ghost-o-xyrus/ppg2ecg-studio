@@ -1,0 +1,29 @@
+id: chiu2020
+name: Chiu
+family: CNN + attention
+version: "1.0"
+order: 10
+citation: >-
+  Chiu H-Y, Shuai H-H, Chao PC-P. Reconstructing QRS complex from PPG by transformed attentional neural
+  networks. IEEE Sensors Journal, 2020.
+licence: "authors' code: MIT; weights: trained by us (Kaggle job k90) with the authors' recipe"
+runtime: onnx
+native_fs: 125
+window_s: 2.048
+overlap: 0.5
+stitching: center               # authors' rule: keep the middle half of each output
+stochastic: false
+repo:                           # authors' code at the commit our weights were trained with
+  url: https://github.com/james77777778/ppg2ecg-pytorch
+  commit: af1bd252e0a4562fa3c4cb9f5740a52adca4c27e
+weights:
+  - file: chiu2020_k90.zip
+    url: release://chiu2020_k90.zip
+    sha256: 9035e4b367bdf509e0159d8d274a97b8a2e7abbe66e7d7e40b53c447df84cf67   # GitHub Release asset chiu2020_k90.zip
+    unzip: true                 # weights.pth + meta.json
+requires: [weights.pth, meta.json, model.onnx]   # model.onnx is exported from the authors' code at setup
+min_ram_gb: 0.5
+preprocessing: PPG low-passed at 5 Hz and scaled over the whole record; 256-sample windows, middle halves kept
+description: >-
+  A small convolutional network with a spatial transformer and attention, trained by us on BIDMC with
+  the authors' code and configuration. Each 2-s output keeps only its middle half, as the authors do.

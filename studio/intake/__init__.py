@@ -1,7 +1,7 @@
 """Data intake: any PPG / ECG file -> one continuous 128 Hz signal (readers, fs_adjust, window_adjust, checks)."""
 from .notices import IntakeError, MODAL, NeedColumn, NeedRate, Notice, POPUP, TOAST, TooLong  # noqa: F401
 
-_PIPELINE = ("Prepared", "align", "aligned_peaks", "from_array", "prepare", "prepare_embedded")
+_PIPELINE = ("Prepared", "align", "aligned_peaks", "from_array", "model_input", "prepare", "prepare_embedded")
 
 
 def __getattr__(name):

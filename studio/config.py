@@ -7,16 +7,33 @@ import sys
 from pathlib import Path
 
 APP_NAME = "PPG2ECG Studio"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 ROOT = Path(__file__).resolve().parents[1]          # repository folder
 MODELS_DIR = ROOT / "models"
 WEIGHTS_DIR = Path(os.environ.get("PPG2ECG_STUDIO_WEIGHTS", ROOT / "weights"))   # override for tests
 
-# where `setup.py` downloads OUR weights from (GitHub Release of this repository); override with the
-# PPG2ECG_RELEASE environment variable or `setup.py --offline FOLDER`
-RELEASE_URL = os.environ.get("PPG2ECG_RELEASE",
-                             "https://github.com/YOUR_GITHUB_USERNAME/ppg2ecg-studio/releases/download/v0.1.0")
+def _release_url() -> str:
+    """Where `setup.py` downloads OUR weights from: the GitHub Release of this version, of the repository this
+    copy was cloned from (read from .git/config, so no account name is written into the code). Override with
+    the PPG2ECG_RELEASE environment variable, or install from files with `setup.py --offline FOLDER`."""
+    import re
+    try:
+        cfg = (ROOT / ".git" / "config").read_text(encoding="utf-8", errors="ignore")
+        m = re.search(r'\[remote "origin"\][^\[]*?url\s*=\s*\S*github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?\s',
+                      cfg + "\n")
+        if m:
+            return f"https://github.com/{m.group(1)}/{m.group(2)}/releases/download/v{APP_VERSION}"
+    except OSError:
+        pass
+    return f"https://github.com/YOUR_GITHUB_USERNAME/ppg2ecg-studio/releases/download/v{APP_VERSION}"
+
+
+RELEASE_URL = os.environ.get("PPG2ECG_RELEASE") or _release_url()
+
+# setup.py flag of each built-in method (setup.bat --chiu ...)
+SETUP_FLAGS = {"zhu_dct": "zhu", "cardiogan": "cardiogan", "ppgflowecg": "ppgflowecg", "rddm": "rddm",
+               "clep_gan": "clepgan", "chiu2020": "chiu", "p2e_wgan": "p2e", "yalcin2026": "yalcin"}
 
 # ---------------------------------------------------------------- signal rules
 WORK_FS = 128.0                 # every input is converted to this rate once

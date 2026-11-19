@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QFileDialog, QInputDialog, QLabel, QMainWindow, QS
 
 from .. import config, engine, intake
 from ..engine import device as devmod
+from ..engine.process import Engine, EngineCrashed
 from ..intake import IntakeError, NeedColumn, NeedRate, TooLong
 from ..scoring import display_shift
 from . import theme
@@ -18,7 +19,7 @@ from .input_panel import InputPanel
 from .metrics_drawer import MetricsDrawer
 from .model_panel import ModelPanel
 from .plots import PlotArea, band, scale, shift
-from .widgets import FILE_FILTER, RateDialog, ToastHost, fmt_duration, in_gui, popup, start
+from .widgets import FILE_FILTER, RateDialog, ToastHost, dispatcher, fmt_duration, in_gui, popup, start
 
 
 def app_icon() -> QIcon:
@@ -52,9 +53,11 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(QSize(1080, 700))
         self.setAcceptDrops(True)
 
-        self.device = devmod.probe()
+        self.device = devmod.probe(settings.get("device", "auto"))
         self.specs = engine.discover()
-        self.models: dict[str, engine.LoadedModel] = {}
+        self.models: dict = {}           # id -> engine.process.ModelState once loaded (or failed)
+        self.engine = None
+        self.model_src = None            # the aligned PPG at the file's own rate (what the models get)
         self.ppg = None                 # intake.Prepared
         self.ecg = None
         self.ecg_from_ppg_file = False
@@ -107,7 +110,7 @@ class MainWindow(QMainWindow):
         self.plots.hover.connect(lambda s: self.s_hover.setText(s))
 
         sb = self.statusBar()
-        self.s_device = QLabel(devmod.describe(self.device))
+        self.s_device = QLabel(f"CPU: {devmod.cpu_name()}")
         self.s_engine = QLabel("Models: loading…")
         self.s_hover = QLabel("")
         sb.addWidget(self.s_device)
@@ -154,8 +157,8 @@ class MainWindow(QMainWindow):
         popup(self, f"{config.APP_NAME} {config.APP_VERSION}",
               "Reconstructs an ECG from a PPG with every installed method, plots them against the PPG and "
               "(optionally) the true ECG, and measures them with the Track 1 scorer of the PPG2ECG thesis.\n\n"
-              "This version: template baseline and Zhu DCT; the learned models, export, cache and large-file "
-              "mode follow in later versions.", big=False, dim=False)
+              "This version: all nine methods of the thesis; export, cache and large-file mode follow in later "
+              "versions.", big=False, dim=False)
 
     def _browse(self, kind):
         what = "PPG" if kind == "ppg" else "true ECG"
@@ -179,18 +182,40 @@ class MainWindow(QMainWindow):
 
     # ================================================================ models
     def load_models(self):
-        for s in self.specs:
-            start(lambda s=s: engine.load_model(s, self.device), self._model_loaded)
+        """Models load in the engine process (window stays responsive); each reports when it is ready."""
+        dispatcher()                     # created here, in the GUI thread: the engine reports from another
+        self.engine = Engine(on_status=lambda st: in_gui(self._model_loaded, st),
+                             on_restart=lambda: in_gui(self._engine_restarted))
+        self.engine.load(self.specs, self.device)
+
+    def _engine_restarted(self, _=None):
+        self.models = {}
+        self.toasts.show("Engine restarted", "A model stopped the engine. It was started again and the models are "
+                                             "loading; press Run all once they are ready.")
+
+    def closeEvent(self, e):
+        if self.engine is not None:
+            self.engine.close()
+        super().closeEvent(e)
 
     def _model_loaded(self, lm):
+        if lm.status == engine.LOADING:
+            self.models.pop(lm.spec.id, None)
+            self.models_panel.set_status(lm.spec.id, lm.status)
+            return
         self.models[lm.spec.id] = lm
         self.models_panel.set_status(lm.spec.id, lm.status, lm.error)
         if lm.status == engine.FAILED:
             self.toasts.show(f"{lm.spec.name} could not load", lm.error[:200])
+        if lm.info.get("device"):
+            self.models_panel.rows[lm.spec.id].dot.setToolTip(f"Ready on {lm.info['device']}"
+                                                              if lm.status == engine.READY else lm.error)
         if lm.info.get("fit_on") and lm.info["fit_on"] != "capnobase":
             self.toasts.show(f"{lm.spec.name}: development weights",
                              f"Its coefficients were fitted on {lm.info['fit_on']}, not CapnoBase, so its numbers "
                              "will not match Track 1. Refit with  setup.bat --zhu --capnobase PATH.")
+        on_gpu = [m for m in self.models.values() if m.status == engine.READY and str(m.device).startswith("GPU")]
+        self.s_device.setText(devmod.describe("gpu") if on_gpu else f"CPU: {devmod.cpu_name()}")
         ready = sum(m.status == engine.READY for m in self.models.values())
         loading = len(self.specs) - len(self.models)
         self.s_engine.setText(f"Models: {ready} ready" + (f", {loading} loading" if loading else ""))
@@ -314,6 +339,7 @@ class MainWindow(QMainWindow):
         self.entry += 1
         self.results = {}
         self.aligned = None
+        self.model_src = None
         if self.ppg is not None:
             try:
                 p, e, notes = intake.align(self.ppg, self.ecg)
@@ -328,6 +354,7 @@ class MainWindow(QMainWindow):
                 from bench import dsp
                 rp = dsp.detect_rpeaks(dsp.bandpass(e, config.WORK_FS, 0.5, 40.0, order=2), config.WORK_FS)
             self.aligned = (p, e, intake.aligned_peaks(self.ppg, p), rp)
+            self.model_src = intake.model_input(self.ppg, self.ecg if e is not None else None, p)
         for r in self.models_panel.rows.values():
             r.time.setText("" if r.status == engine.READY else r.time.text())
         self.models_panel.set_input(None if self.aligned is None else len(self.aligned[0]) / config.WORK_FS)
@@ -394,8 +421,10 @@ class MainWindow(QMainWindow):
         ids = [i for i in ids if i in self.models and self.models[i].status == engine.READY]
         if not ids:
             return
+        ids = engine.run_order(ids, self.specs)          # fast models first, RDDM and PPGFlowECG last
         entry = self.entry
         ppg, ecg, peaks, _ = self.aligned
+        src = self.model_src
         self.busy = True
         self.models_panel.set_busy(True)
         t0 = time.perf_counter()
@@ -405,7 +434,10 @@ class MainWindow(QMainWindow):
             for lm in models:
                 in_gui(self._model_started, (entry, lm.spec.id))
                 try:
-                    r = engine.run_model(lm, ppg, peaks, ecg)
+                    r = self.engine.run(lm.spec.id, ppg, peaks, ecg, src=src).result()
+                except EngineCrashed as ex:
+                    in_gui(self._model_failed, (entry, lm.spec.id, ex))
+                    break                                # the engine restarts; the rest would fail too
                 except Exception as ex:
                     in_gui(self._model_failed, (entry, lm.spec.id, ex))
                     continue

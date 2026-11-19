@@ -59,7 +59,8 @@ class ModelRow(QFrame):
     def set_status(self, status, detail=""):
         self.status = status
         tips = {LOADING: "Loading…", READY: "Ready", FAILED: f"Failed to load: {detail}",
-                MISSING: f"Not installed: {detail}\nInstall it with  setup.bat --{self.spec.id.split('_')[0]}"}
+                MISSING: f"Not installed: {detail}\nInstall it with  "
+                         f"setup.bat --{config.SETUP_FLAGS.get(self.spec.id, self.spec.id)}"}
         self.dot.set_state(status, tips.get(status, status))
         off = status in (MISSING, FAILED)
         self.setProperty("off", "true" if off else "false")

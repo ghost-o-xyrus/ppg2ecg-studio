@@ -1,0 +1,28 @@
+id: p2e_wgan
+name: P2E-WGAN
+family: GAN (Wasserstein)
+version: "1.0"
+order: 11
+citation: >-
+  Vo K et al. P2E-WGAN: ECG waveform synthesis from PPG with conditional Wasserstein generative
+  adversarial networks. ACM SAC, 2021.
+licence: "authors' code: MIT; weights: trained by us (Kaggle job k92m) with the authors' recipe"
+runtime: onnx
+native_fs: 125
+window_s: 3
+overlap: 0.5
+stochastic: false
+repo:                           # authors' code at the commit our weights were trained with
+  url: https://github.com/khuongav/P2E-WGAN-ecg-ppg-reconstruction
+  commit: 7a2b4e05c788ed57e3289118148b0c7cfc6f15fd
+weights:
+  - file: p2e_wgan_k92m.zip
+    url: release://p2e_wgan_k92m.zip
+    sha256: 8fc9332c388dd4adc9288024da749e4480624ba82bab61407e1d6ce90df3c0e0   # GitHub Release asset p2e_wgan_k92m.zip
+    unzip: true                 # weights.pth + meta.json
+requires: [weights.pth, meta.json, model.onnx]   # model.onnx is exported from the authors' code at setup
+min_ram_gb: 0.5
+preprocessing: PPG band-passed 0.5-8 Hz; 3-s windows scaled to [-1, 1]
+description: >-
+  A 1-D U-Net generator trained as a Wasserstein GAN, followed by the authors' moving-average smoother.
+  Trained by us on MIMIC-II with the authors' unchanged training script.

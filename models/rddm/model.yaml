@@ -1,0 +1,36 @@
+id: rddm
+name: RDDM
+family: Diffusion (10 steps)
+version: "1.0"
+order: 80
+citation: >-
+  Shome D, Sarkar P, Etemad A. Region-disentangled diffusion model for high-fidelity PPG-to-ECG
+  translation. AAAI, 2024.
+licence: "authors' code: MIT; weights: the authors' release (Google Drive)"
+runtime: torch
+native_fs: 128
+window_s: 4
+overlap: 0                      # each window is an independent sample: concatenated, never averaged
+stochastic: true
+repo:                           # authors' code at the commit Track 1 used
+  url: https://github.com/DebadityaQU/RDDM
+  commit: 7d5348843c3985c211a23ae5105a2d9497d5156a
+weights:                        # the authors' Google Drive folder, never re-hosted
+  - file: rddm_main_network.pth
+    url: gdrive-folder://1Z7JQ5VdTrekx4lbARJNIUiR5D-4Kz7wg
+    sha256: e90490a9039cdf147be29404be94d4b04bfcccc3c0d94ee009bbe42f2c040eb9
+  - file: rddm_condition_encoder_1.pth
+    url: gdrive-folder://1Z7JQ5VdTrekx4lbARJNIUiR5D-4Kz7wg
+    sha256: 9f8ef5d758962030958674526d450b41bc188e27b1edf2c3fe5c1a4bfe067223
+  - file: rddm_condition_encoder_2.pth
+    url: gdrive-folder://1Z7JQ5VdTrekx4lbARJNIUiR5D-4Kz7wg
+    sha256: 3c7cbbc1585395381faf20489bd7d9091aafc9d3cbddde67e92cc3d050f6c3bd
+params:
+  n_steps: 10
+  batch_size: 128
+setup_disk_gb: 1.5
+min_ram_gb: 2
+preprocessing: PPG band-passed 0.5-8 Hz over the whole record; 4-s windows scaled to [-1, 1]
+description: >-
+  Two conditioning U-Nets read the PPG; a diffusion model then turns Gaussian noise into an ECG in 10
+  reverse steps, treating the QRS region separately. Stochastic: a fixed seed gives the same output every run.
