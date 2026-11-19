@@ -12,6 +12,9 @@ weights/*
 *.npy
 *.csv
 !tests/data/*.csv
+!examples/*.csv
+!examples/*.npy
+!examples/*.npz
 dist/
 build/
 .mypy_cache/

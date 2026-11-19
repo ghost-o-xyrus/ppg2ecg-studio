@@ -1,11 +1,131 @@
 # PPG2ECG Studio
 
-A Windows desktop app that turns a PPG recording into an ECG with every installed reconstruction method,
-plots the results against the PPG and (optionally) the true ECG, and measures them with the same scorer as
-Track 1 of the PPG2ECG thesis.
+PPG2ECG Studio is a Windows app that reconstructs an ECG from a PPG (the pulse signal of a finger or wrist
+sensor). Drop a PPG file and it runs nine reconstruction methods, from a simple baseline to diffusion models,
+plots their ECGs under each other, and scores them with the same measures as Track 1 of the PPG2ECG thesis;
+add the true ECG and it also measures how close each one comes.
 
-**Version 0.2** has the full default workflow (drop a file, convert it, run, plot, measure) with all nine
-methods of the thesis:
+![PPG2ECG Studio after Run all on a synthetic recording](docs/screenshots/main.png)
+
+## Contents
+
+1. [Set up](#1-set-up)
+2. [Run](#2-run)
+3. [What works in version 0.2](#3-what-works-in-version-02)
+4. [Example recordings](#4-example-recordings)
+
+Reference: [What the app does with your file](#what-the-app-does-with-your-file) ·
+[Measurements](#measurements) · [Command line](#command-line) ·
+[Check that the numbers match Track 1](#check-that-the-numbers-match-track-1) · [Setup flags](#setup-flags) ·
+[Adding a model](#adding-a-model) · [Repository layout](#repository-layout) · [Roadmap](#roadmap) ·
+[References](#references)
+
+## 1. Set up
+
+**You need:** Windows 10 or 11 (64-bit), about 8 GB of free disk space, 8 GB of RAM (16 GB for PPGFlowECG),
+and an internet connection for the first setup (about 5.5 GB of downloads). No administrator rights and no
+Python installation are needed.
+
+1. **Get the code.** On this repository's GitHub page, click the green *Code* button and either choose
+   *Download ZIP* and unzip it, or copy the address and run `git clone <address>` in a terminal.
+   Put the folder somewhere with a short path and no special characters, for example `C:\PPG2ECG`.
+
+2. **Double-click `setup.bat`** in that folder. A console window opens and shows each step:
+
+   | Step | What happens | Time |
+   |---|---|---|
+   | Tools | Downloads [uv](https://github.com/astral-sh/uv) into `.tools\uv`; uv provides a private Python 3.11 | 1 min |
+   | Packages | Creates `.venv` and installs the pinned packages of `requirements.txt` (Qt, SciPy, PyTorch for the CPU, ONNX Runtime) | 2–5 min |
+   | Models | Downloads the nine methods and the authors' code, checks every file's SHA-256, converts five networks to ONNX and checks each conversion | 10–30 min (most of it PPGFlowECG's 3.9 GB) |
+   | Self-test | Runs every model on a synthetic PPG, measures its speed and chooses GPU or CPU for it | 1 min |
+   | Shortcuts | Adds **PPG2ECG Studio** to the Start menu and the desktop | – |
+
+3. **Wait for `Done.`** The last table lists each model with `yes` under *installed*. If a model is reported
+   as not installed, the line above it says why; the app works without it, and you can add it later:
+
+   | Message | What to do |
+   |---|---|
+   | *Google Drive refused the download* (RDDM) | Open the printed link, download the three `.pth` files into one folder, then run `setup.bat --rddm --offline C:\that\folder` |
+   | *PPGFlowECG: skipped – needs about 5 GB of RAM* | Use a computer with 16 GB of RAM, or run `setup.bat --ppgflowecg --force` |
+   | A download failed | Run `setup.bat` again: finished models are kept and interrupted downloads resume |
+
+Running `setup.bat` again is always safe. To install only some methods, run it from a terminal with flags,
+for example `setup.bat --chiu --clepgan` ([all flags](#setup-flags)).
+
+### Where the weights come from
+
+| Method | Source | Download | On disk |
+|---|---|---|---|
+| Zhu DCT, Chiu, CLEP-GAN, P2E-WGAN, Yalcin | This repository's GitHub Release (our weights; CLEP-GAN stored as fp16) | 0.3 GB | 0.6 GB |
+| CardioGAN | The authors' GitHub release (TF2 checkpoint), converted to ONNX on your computer with a temporary TensorFlow 2.15 (deleted afterwards) | 0.2 GB + 0.3 GB TensorFlow | 0.1 GB |
+| RDDM | The authors' Google Drive folder | 0.6 GB | 0.6 GB |
+| PPGFlowECG | The authors' Hugging Face page; the 3.8 GB VAE checkpoint is reduced to the parts inference needs | 3.9 GB | 0.9 GB |
+
+The authors' code is downloaded from their repositories at the commit Track 1 used. Nothing of theirs is
+re-hosted here ([THIRD_PARTY.md](THIRD_PARTY.md) lists every source, commit and licence). Every file is checked
+against the SHA-256 in its `models/<id>/model.yaml`, and downloads resume after an interruption.
+
+The networks of CardioGAN, Chiu, CLEP-GAN, P2E-WGAN and Yalcin are exported to ONNX at setup, and each export
+is checked against the original framework (largest difference printed; about 10⁻⁶). They run on the GPU
+through DirectML (any GPU Windows has; CUDA when `onnxruntime-gpu` and an NVIDIA GPU are present) when that
+works, agrees with the CPU and is faster; otherwise on the CPU. On an Intel Iris Xe, DirectML is about as fast
+as the CPU for these small networks (and fails on Chiu's and P2E-WGAN's transposed convolutions), so most of
+them stay on the CPU. The choice is stored in `weights\device.json`; `setup.bat --check` measures again.
+
+### Fitting Zhu DCT yourself (optional)
+
+Setup downloads Zhu DCT's 1,300 coefficients from the Release. To fit them on your computer from CapnoBase
+instead (about a minute), exactly as in Track 1:
+
+```bat
+setup.bat --zhu --capnobase C:\path\to\capnobase
+```
+
+`PATH` is the folder with the 42 CapnoBase recordings, in any of the forms it is distributed in
+(`*_8min.mat`, `*_8min_signal.csv` or the Borealis `*.tab` files; [doi:10.5683/SP2/NLB8IT](https://doi.org/10.5683/SP2/NLB8IT)).
+The CSV and TAB files are read first; only a recording that exists solely as a `.mat` file (MATLAB v7.3) needs
+`h5py`, which setup then installs into `.venv`. The fit reports whether it reproduces Track 1 (27,661 cycles,
+delays 0.234375 s for Zhu DCT and 0.3828125 s for the template).
+
+## 2. Run
+
+**Start the app** from the *PPG2ECG Studio* shortcut, or double-click **`run.bat`** in the folder
+(`run.bat --console` keeps a console window open for error messages).
+
+The window opens in about 2 seconds. The models load in the background and each one's dot turns green when
+it is ready: on an Intel i5-1240P laptop the template baseline and Zhu DCT after about 6 s, the ONNX models
+after about 8 s, RDDM and PPGFlowECG after about 15 s. A ready model can run while the others are still
+loading.
+
+**A first run with an example recording** (in the [`examples`](examples) folder):
+
+1. Drag `examples\bidmc_25_full_8min.csv` onto the *PPG signal* tab.
+2. The file is 8 minutes long, so a pop-up offers its first 2 minutes: choose *Use the first 2 minutes*.
+   The file card shows 125 Hz → 128 Hz and the beats found; the *True ECG* tab fills itself from the file's
+   ECG column and a side notification says so.
+3. Press **Run all**. The ECGs appear one by one, fastest method first; all nine take about 30 s on the
+   laptop above, most of it RDDM.
+4. The metrics drawer opens: *Model comparison* and *Errors vs true ECG*, best values in bold.
+5. Change *Show [10] s from [0] s* to look at other parts; scroll to zoom, drag to pan, double-click to reset.
+
+To try a PPG and a true ECG from separate files, drop `examples\bidmc_13_ppg_2min.csv` on the *PPG signal*
+tab and `examples\bidmc_13_ecg_2min.csv` on the *True ECG* tab; they are aligned by their time columns.
+
+## 3. What works in version 0.2
+
+**Input files**
+
+- CSV, TXT, NPY and NPZ, from 10 s to 2 min (longer files: the first 2 minutes are used), up to 20 MB.
+- Any sampling rate, found from a time column (seconds or milliseconds), a `# fs=125` comment, an `fs` array
+  in an NPZ, `_125Hz` in the file name, the rate remembered for that folder, or a question to you.
+- The signal column is chosen by name (`ppg`, `pleth`, `bvp`; `ecg`, `ii`); with several unnamed columns the
+  app asks once. An ECG column in the PPG file becomes the true ECG automatically.
+- 2-D arrays are read as rows of windows and joined (overlapping sliding windows are recognised); short gaps of
+  missing values are filled; an upside-down PPG is flipped; PPG and true ECG are aligned by their time stamps.
+- Every file is converted to 128 Hz for plotting and scoring; each model gets the signal at the file's own
+  rate and resamples it once to its own rate, as in Track 1.
+
+**The nine methods**
 
 | Method | Family | Runs on | Weights |
 |---|---|---|---|
@@ -19,105 +139,32 @@ methods of the thesis:
 | RDDM | Diffusion (10 steps) | PyTorch | the authors' release |
 | PPGFlowECG | Latent rectified flow | PyTorch | the authors' release |
 
-Export, the cache and large-file mode follow in the next versions ([Roadmap](#roadmap)).
+**Running**
 
-![PPG2ECG Studio after Run all on a synthetic recording](docs/screenshots/main.png)
+- The models load and run in a separate engine process, so the window never freezes; if a model crashes,
+  only the engine restarts and a side notification says so.
+- *Run all* (Ctrl+R) runs every ticked model, fastest first; ▶ on a row runs one model. Each row shows the
+  model's state (grey dot: loading, green: ready, red: failed) and its generation time.
+- RDDM and PPGFlowECG draw random samples with a fixed seed, so a file gives the same result every time.
+- The status bar shows the device in use (GPU through DirectML, or the CPU) and how many models are ready.
 
-## Contents
+**Plots**
 
-- [Install](#install)
-- [Use](#use)
-- [What the app does with your file](#what-the-app-does-with-your-file)
-- [Measurements](#measurements)
-- [Command line](#command-line)
-- [Check that the numbers match Track 1](#check-that-the-numbers-match-track-1)
-- [Setup flags](#setup-flags)
-- [Adding a model](#adding-a-model)
-- [Repository layout](#repository-layout)
-- [Roadmap](#roadmap)
-- [References](#references)
+- Stacked traces: PPG, true ECG (black), template baseline (blue), the other methods (grey), all on one time
+  axis; plot window 2–15 s; zoom, pan, reset; time and value under the mouse in the status bar.
+- ⚙ *Display options*: align each reconstruction to the true ECG (removes its one constant delay, as the
+  scorer does), show the true R peaks, band-pass 0.5–40 Hz as scored.
 
-## Install
+**Measurements** (the 📄 metrics drawer, [details](#measurements))
 
-Windows 10 or 11, 64-bit. No administrator rights and no existing Python needed.
-
-1. Download or clone this repository.
-2. Double-click **`setup.bat`**. It
-   - fetches [uv](https://github.com/astral-sh/uv) into `.tools\uv`; uv uses Python 3.11 if it is installed and
-     otherwise downloads a private copy;
-   - creates `.venv` and installs the pinned packages in `requirements.txt` (about 320 MB to download: Qt,
-     SciPy, PyTorch for the CPU, ONNX Runtime with DirectML);
-   - installs the nine methods (about 5 GB to download, 2.2 GB on disk afterwards; see
-     [Where the weights come from](#where-the-weights-come-from)), runs a self-test, measures each model's
-     speed on this computer and chooses GPU or CPU for each ONNX model;
-   - adds a **PPG2ECG Studio** shortcut to the Start menu and the desktop.
-3. Start the app from the shortcut or with **`run.bat`** (`run.bat --console` keeps a console open for error
-   messages). The window opens in about 2 seconds. The models load in a separate engine process: on an Intel
-   i5-1240P laptop the template baseline and Zhu DCT are ready after about 6 s, the ONNX models after about
-   8 s, RDDM and PPGFlowECG after about 15 s. A ready model can run while the others are still loading.
-
-### Where the weights come from
-
-| Method | Source | Download | On disk |
-|---|---|---|---|
-| Zhu DCT, Chiu, CLEP-GAN, P2E-WGAN, Yalcin | This repository's GitHub Release (our weights; CLEP-GAN stored as fp16) | 0.3 GB | 0.6 GB |
-| CardioGAN | The authors' GitHub release (TF2 checkpoint), converted to ONNX on your computer with a temporary TensorFlow 2.15 (deleted afterwards) | 0.2 GB + 0.3 GB TensorFlow | 0.1 GB |
-| RDDM | The authors' Google Drive folder | 0.6 GB | 0.6 GB |
-| PPGFlowECG | The authors' Hugging Face page; the 3.8 GB VAE checkpoint is reduced to the parts inference needs | 3.9 GB | 0.9 GB |
-
-The authors' code is downloaded from their repositories at the commit Track 1 used. Nothing of theirs is
-re-hosted here ([THIRD_PARTY.md](THIRD_PARTY.md) lists every source, commit and licence). Every file is checked
-against the SHA-256 in its `models/<id>/model.yaml`, and downloads resume after an interruption. Google Drive
-sometimes refuses automated downloads: setup then retries and finally prints the folder link; download the
-three files by hand and run `setup.bat --rddm --offline FOLDER`. PPGFlowECG needs about 5 GB of RAM while
-running; setup checks disk space and RAM first and skips it with a message (`--force` installs it anyway).
-
-The networks of CardioGAN, Chiu, CLEP-GAN, P2E-WGAN and Yalcin are exported to ONNX at setup, and each export
-is checked against the original framework (largest difference printed; about 10⁻⁶). They run on the GPU
-through DirectML (any GPU Windows has; CUDA when `onnxruntime-gpu` and an NVIDIA GPU are present) when that
-works, agrees with the CPU and is faster; otherwise on the CPU. On an Intel Iris Xe, DirectML is slower than
-the CPU for these small networks (and fails on Chiu's and P2E-WGAN's transposed convolutions), so setup keeps
-all of them on the CPU. The choice is stored in `weights\device.json`; `setup.bat --check` measures again.
-
-### Zhu DCT coefficients
-
-Zhu DCT needs 1,300 coefficients fitted on CapnoBase, exactly as in Track 1. Setup downloads them from the
-Release; to fit them on your computer instead (about a minute):
-
-```bat
-setup.bat --zhu --capnobase C:\path\to\capnobase
-```
-
-`PATH` is the folder with the 42 CapnoBase recordings, in any of the forms it is distributed in
-(`*_8min.mat`, `*_8min_signal.csv` or the Borealis `*.tab` files; [doi:10.5683/SP2/NLB8IT](https://doi.org/10.5683/SP2/NLB8IT)).
-The CSV and TAB files are read first; only a recording that exists solely as a `.mat` file (MATLAB v7.3) needs
-`h5py`, which setup then installs into `.venv`. The fit reports whether it reproduces Track 1 (27,661 cycles,
-delays 0.234375 s for Zhu DCT and 0.3828125 s for the template). Without these coefficients the app
-lists Zhu DCT as *not installed*.
-
-## Use
-
-1. **Drop a PPG file** on the *PPG signal* tab (or *Browse…*, or *File → Open PPG*, Ctrl+O). CSV, TXT, NPY or
-   NPZ, 10 s to 2 min, up to 20 MB, any sampling rate and any window layout. A file card shows its length, the
-   rate found, the conversion to 128 Hz and the number of beats.
-2. **Optionally drop the true ECG** on the *True ECG* tab. If the PPG file already holds an ECG column (for
-   example BIDMC's `II` next to `PLETH`), it is used automatically and a side notification says so; remove it
-   with ✕ if you do not want errors measured.
-3. **Run all** (Ctrl+R) runs every ticked model on the whole file, fastest first (RDDM and PPGFlowECG last);
-   ▶ on a row runs one model. Traces appear as each model finishes; the row shows its generation time. On the
-   i5-1240P all nine take about 30 s for a 2-minute file, most of it RDDM. RDDM and PPGFlowECG draw random
-   samples; they use a fixed seed, so the same file gives the same output every time.
-4. **Look**: *Show [10] s from [0] s* chooses the plotted window (2–15 s). Scroll to zoom, drag to pan,
-   double-click to reset; the status bar reads out time and value under the mouse.
-5. **Measure**: 📄 opens the metrics drawer (it opens by itself after Run all). *Model comparison* works
-   without a true ECG; *Errors vs true ECG* needs one. Bold marks the best value in each column.
+- *Model comparison*, without a true ECG: heart rate of the reconstruction and of the PPG, beats against
+  pulses, RMSSD, flags (flat output, missing or extra beats), generation time, real-time factor, device.
+- *Errors vs true ECG*, the Track 1 scorer: heart-rate error, R-peak F1 (raw and delay-corrected), delay,
+  R-peak jitter, waveform r, beat-shape r, RMSE, PRD, Fréchet distance, RMSSD error.
 
 ![Metrics drawer, Errors vs true ECG](docs/screenshots/metrics.png)
 
-⚙ *Display options*: align each reconstruction to the true ECG (removes its one constant delay, as the
-scorer does), show the true R peaks, band-pass 0.5–40 Hz as scored.
-
-### Notifications
+**Notifications**
 
 | Situation | What you see |
 |---|---|
@@ -127,9 +174,27 @@ scorer does), show the true R peaks, band-pass 0.5–40 Hz as scored.
 | Fewer than 20 beats or under 30 s | Side notification: measurements will be rough |
 | Sampling rate implies a heart rate outside 36–210 bpm | Side notification with the implied rate |
 | PPG upside down | Flipped automatically, side notification |
-| Windows joined, gaps filled, clipped samples, true ECG upside down, no true ECG | Side notification |
+| Windows joined, gaps filled, clipped samples, true ECG upside down, aligned by time stamps, no true ECG | Side notification |
 
 Any conversion that takes longer than 0.3 s shows a spinner: *Adjusting data to preferred format…*
+
+**Also included**
+
+- A [command line](#command-line) with the same intake, models and scorer.
+- `setup.bat` flags to install, list, remove and re-check models, and to choose the device ([flags](#setup-flags)).
+- Tests, including a check that the app reproduces the Track 1 numbers of all nine methods on BIDMC
+  ([details](#check-that-the-numbers-match-track-1)).
+
+**Not yet:** export (PNG, PDF, TXT, reconstructed ECG files), a cache of earlier runs, files longer than
+2 minutes, comparing two runs, and checks for adding new models. These follow in versions 0.3 and 0.4
+([Roadmap](#roadmap)).
+
+## 4. Example recordings
+
+The [`examples`](examples) folder holds 15 short real recordings for trying the app: PPG (and mostly the true
+ECG) from BIDMC and from the UCI Cuff-Less Blood Pressure dataset (MIMIC-II), 8 s to 8 min, heart rates from 66 to 125 bpm,
+in every file layout the app reads, including files that trigger each notification. The table, sources and
+licences are in [examples/README.md](examples/README.md).
 
 ## What the app does with your file
 
@@ -286,8 +351,10 @@ bench/              trimmed copy of the thesis benchmark: dsp, metrics, runner, 
 models/             template/ zhu_dct/ chiu2020/ clep_gan/ p2e_wgan/ yalcin2026/ cardiogan/ rddm/ ppgflowecg/
                     _example/   (model.yaml + adapter.py each)
 weights/            installed weights, the authors' code, device.json, speed.json (not in Git)
+examples/           15 short real recordings to try the app (BIDMC, MIMIC-II), with their sources and licences
 tools/              fit_baselines.py (Zhu DCT and template delay from CapnoBase),
                     stage_weights.py (our trained weights -> Release assets),
+                    make_examples.py (builds examples/ from BIDMC and the UCI Cuff-Less dataset),
                     convert_cardiogan.py (TF2 -> ONNX, run by setup in a temporary environment),
                     make_screenshots.py (the README images, from a synthetic recording)
 docs/               windows_checklist.md (manual check), screenshots/
